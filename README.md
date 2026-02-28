@@ -1,0 +1,26 @@
+# :stars: Lumenite Shaders
+Questions, comments or need to contact support? Join the Lumenite discord: https://discord.gg/deXJrW2dx6
+
+## Kernel - (Reconstructed Normals, Motion vectors, etc.)
+![Kernel poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/Kernel_poster.jpg)
+Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motion confidence, etc. once and populates the textures for subsequent use.\
+**NOTE**: Kernel skips the skybox, if you are a developer and looking for motion vectors, use LumaFlow shader.
+
+## RTAO/LSAO - Ray Traced Ambient Occlusion
+![RTAO poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/RTAO_poster.jpg)
+Ray Traced Ambient Occlusion shaders for ReShade:\
+i)  RTAO (more detailed contact shadowing)\
+ii) LSAO (large-scale shadowing).
+
+## Anamorphic Bloom
+![AnamorphicBloom poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/AnamorphicBloom_poster.jpg)
+Artistic bloom shader that creates the anamorphic lens aesthetic.
+
+## SSR - Screen Space Reflections
+![SSR poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/SSR_poster.jpg)
+Fast screen space Planar reflections.
+
+## LumaFlow - Dense Real-time Motion Estimation
+![LumaFlow poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/LumaFlow_poster.jpg)
+**SPDX Identifier: CC-BY-NC-4.0**.\
+LumaFlow is a motion estimation shader written for ReShade. It determines where each pixel in the current frame originated from in the previous frame, providing a 'motion vector' for this tracking. These motion vectors can enable various applications: TAA, frame generation, temporal reprojection, and other motion-dependent effects like motion blur.
