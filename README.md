@@ -8,8 +8,8 @@ Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motio
 ## RTAO/LSAO - Ray Traced Ambient Occlusion
 ![RTAO poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/RTAO_poster.jpg)
 Ray Traced Ambient Occlusion shaders for ReShade:\
-i)  RTAO (more detailed contact shadowing)\
-ii) LSAO (large-scale shadowing).
+i)  RTAO (detailed contact shadows)\
+ii) LSAO (contact and large-scale shadowing).
 
 ## Anamorphic Bloom
 ![AnamorphicBloom poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/AnamorphicBloom_poster.jpg)
