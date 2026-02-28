@@ -3,8 +3,7 @@ Questions, comments or need to contact support? Join the Lumenite discord: https
 
 ## Kernel - (Reconstructed Normals, Motion vectors, etc.)
 ![Kernel poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/Kernel_poster.jpg)
-Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motion confidence, etc. once and populates the textures for subsequent use.\
-**NOTE**: Kernel skips the skybox, if you are a developer and looking for motion vectors, use LumaFlow shader.
+Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motion confidence, etc. once and populates the textures for subsequent use.
 
 ## RTAO/LSAO - Ray Traced Ambient Occlusion
 ![RTAO poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/RTAO_poster.jpg)
