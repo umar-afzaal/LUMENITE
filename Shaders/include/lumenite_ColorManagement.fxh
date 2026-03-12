@@ -195,7 +195,7 @@ float3 HLGtoLinear(float3 r) {
 | :: HELPERS :: |
 '--------------*/
 
-float3 ToLinearColorspace(float3 r, bool tonemap=true) {
+float3 ToLinearColorspace(float3 r, bool tonemap) {
     if (BUFFER_COLOR_SPACE == 2) r = r * (80.0 / HDR_WHITELEVEL); //scRGB
     else if (BUFFER_COLOR_SPACE == 3) r = PQtoLinear(r);
     else if (BUFFER_COLOR_SPACE == 4) r = HLGtoLinear(r);
@@ -206,7 +206,7 @@ float3 ToLinearColorspace(float3 r, bool tonemap=true) {
     return r;
 }
 
-float3 ToOutputColorspace(float3 r, bool tonemap=true) {
+float3 ToOutputColorspace(float3 r, bool tonemap) {
     if (BUFFER_COLOR_SPACE == 2) r = r * (HDR_WHITELEVEL / 80.0); //scRGB
     else if (BUFFER_COLOR_SPACE == 3) r = linearToPQ(r);
     else if (BUFFER_COLOR_SPACE == 4) r = linearToHLG(r);
@@ -229,7 +229,7 @@ float GetLuminance(float3 color)
     return dot(color, float3(0.2126, 0.7152, 0.0722));
 }
 
-float3 GetLinearColor(float2 uv, bool tonemap=true)
+float3 GetLinearColor(float2 uv, bool tonemap)
 {
     float3 color = tex2Dlod(ReShade::BackBuffer, float4(uv, 0, 0)).rgb;
     return ToLinearColorspace(color, tonemap);

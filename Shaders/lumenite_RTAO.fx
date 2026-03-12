@@ -311,15 +311,15 @@ float4 PS_Display(VSOUT input) : SV_Target
     float ao = tex2D(sAO1, input.uv).r; //stable AO mask (fades to 1.0)
     if (DEBUG_VIEW) {
         #if BUFFER_COLOR_SPACE > 1
-            return float4(ToOutputColorspace(ao.xxx), 1.0);
+            return float4(ToOutputColorspace(ao.xxx, true), 1.0);
         #else
             return float4(ao.xxx, 1.0);
         #endif
     }
     if (depth == 0 || depth >= DEPTH_BOUNDARY) discard;
-    float3 base = GetLinearColor(input.uv);
+    float3 base = GetLinearColor(input.uv, true);
     base *= ao;
-    return float4(ToOutputColorspace(base), 1.0);
+    return float4(ToOutputColorspace(base, true), 1.0);
 }
 
 float PS_StoreAO(VSOUT input) : SV_Target
