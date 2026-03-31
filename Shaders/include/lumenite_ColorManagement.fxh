@@ -191,6 +191,24 @@ float3 HLGtoLinear(float3 r) {
     return r * 1000.0 / HDR_WHITELEVEL;
 }
 
+//=== YCoCg
+float3 linearToYCoCg(float3 r) {
+    float y  = (r.r + 2.0 * r.g + r.b) * 0.25;
+    float co = (r.r - r.b) * 0.5;
+    float cg = (r.g - (r.r + r.b) * 0.5) * 0.5;
+    return float3(y, co, cg);
+}
+
+float3 YCoCgToLinear(float3 r) {
+    float y  = r.x;
+    float co = r.y;
+    float cg = r.z;
+    float g = y + cg;
+    float rOut = y + co - cg;
+    float b = y - co - cg;
+    return float3(rOut, g, b);
+}
+
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
