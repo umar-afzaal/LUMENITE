@@ -36,7 +36,6 @@
 // Core
 #define PI 3.14159265359
 #define EPSILON 1e-6
-#define FOV 60.0
 #define REF_WIDTH 2560.0  // Don't change
 #define REF_HEIGHT 1440.0 // Same
 #define WIDTH_SCALE (BUFFER_WIDTH / REF_WIDTH)
