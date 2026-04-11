@@ -168,12 +168,18 @@ float3 CalculateSmoothNormal(float2 uv, float4 gbuffer, int dilation, sampler Sr
     return normalize(normalSum / weightSum);
 }
 
+float3 GetBackBuffer(float2 uv)
+{
+    return tex2Dlod(ReShade::BackBuffer, float4(uv,0,0)).rgb;
+}
+
 float3 CalculateBumpyNormal(float2 uv, float3 geoNormal)
 {
     float2 texelSize = BUFFER_PIXEL_SIZE * BUMP_SCALE;
-    float lumaCenter = GetLuminance(GetLinearColor(uv, false));
-    float lumaRight  = GetLuminance(GetLinearColor(uv + float2(texelSize.x, 0.0), false));
-    float lumaBottom = GetLuminance(GetLinearColor(uv + float2(0.0, texelSize.y), false));
+    float3 lumaWeights = float3(0.299, 0.587, 0.114);
+    float lumaCenter = dot(GetBackBuffer(uv), lumaWeights);
+    float lumaRight  = dot(GetBackBuffer(uv + float2(texelSize.x, 0.0)), lumaWeights);
+    float lumaBottom = dot(GetBackBuffer(uv + float2(0.0, texelSize.y)), lumaWeights);
     //luma gradients
     float dx = (lumaRight - lumaCenter) * 2.5;
     float dy = (lumaBottom - lumaCenter) * 2.5;
