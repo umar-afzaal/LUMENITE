@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_AnamorphicBloom.fx
-        Version    : 2026.02.28
+        Version    : 2026.04.11
         Author     : Afzaal (Kaidō)
         Description: Horizontally-stretched artistic bloom approximating the
                      Anamorphic lens aesthetic.
