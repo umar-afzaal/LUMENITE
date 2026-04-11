@@ -8,8 +8,8 @@ Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motio
 ## RTAO/LSAO - Ray Traced Ambient Occlusion
 ![RTAO poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/RTAO_poster.jpg)
 Ray Traced Ambient Occlusion shaders for ReShade:\
-i)  RTAO (detailed contact shadows)\
-ii) LSAO (contact and large-scale shadowing).
+i)  RTAO (sharp contact shadows)\
+ii) LSAO (both contact and large-scale shadowing).
 
 ## Anamorphic Bloom
 ![AnamorphicBloom poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/AnamorphicBloom_poster.jpg)
@@ -17,9 +17,8 @@ Artistic bloom shader that creates the anamorphic lens aesthetic.
 
 ## SSSR - Stochastic Screen Space Reflections
 ![SSSR poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/SSSR_poster.jpg)
-Crispy screen space reflections.
+High-quality screen space reflections.
 
 ## LumaFlow - Dense Real-time Motion Estimation
 ![LumaFlow poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/LumaFlow_poster.jpg)
-**SPDX Identifier: CC-BY-NC-4.0**.\
 LumaFlow is a motion estimation shader written for ReShade. It determines where each pixel in the current frame originated from in the previous frame, providing a 'motion vector' for this tracking. These motion vectors can enable various applications: TAA, frame generation, temporal reprojection, and other motion-dependent effects like motion blur.
