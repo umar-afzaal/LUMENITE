@@ -26,15 +26,18 @@
         ========================================================================
 */
 
-#include "ReShade.fxh"
-#include "./include/lumenite_ColorManagement.fxh"
-#include "./include/lumenite_Helpers.fxh"
-
 /*------------------.
 | :: DEFINITIONS :: |
 '------------------*/
 #define HORIZONTAL_STRETCH 7.5
 #define LUM_THRESHOLD_SCALER 10.0
+
+/*--------------.
+| :: HEADERS :: |
+'--------------*/
+#include "ReShade.fxh"
+#include "./include/lumenite_ColorManagement.fxh"
+#include "./include/lumenite_Helpers.fxh"
 
 /*---------------.
 | :: UNIFORMS :: |
@@ -239,7 +242,6 @@ float4 PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 /*----------------.
 | :: TECHNIQUE :: |
 '----------------*/
-
 technique Lumenite_AnamorphicBloom <
     ui_label = "LUMENITE: Anamorphic Bloom";
     ui_tooltip = "Horizontal artistic bloom approximating the Anamorphic lens aesthetic.";

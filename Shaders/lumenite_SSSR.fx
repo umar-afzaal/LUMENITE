@@ -24,22 +24,25 @@
         ========================================================================
 */
 
+/*------------------.
+| :: DEFINITIONS :: |
+'------------------*/
+#define FOV 70.0
+#define NEAR_PLANE 0.5
+#define RAY_LENGTH_SCALE 9.0
+#define RAY_ORIGIN_BIAS -0.0004
+
+/*--------------.
+| :: HEADERS :: |
+'--------------*/
 #include "ReShade.fxh"
 #include "./include/LUMENITE_Projections.fxh"
 #include "./include/LUMENITE_Helpers.fxh"
 #include "./include/lumenite_ColorManagement.fxh"
 
-/*------------------.
-| :: DEFINITIONS :: |
-'------------------*/
-
-#define RAY_LENGTH_SCALE 9.0
-#define RAY_ORIGIN_BIAS -0.0004
-
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-
 uniform float DEPTH_BOUNDARY <
     ui_type = "slider";
     ui_min = 0.001; ui_max = 0.999; ui_step = 0.001;
@@ -110,7 +113,6 @@ uniform float TAIL_FEATHERING <
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-
 //from Kernel
 texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -126,7 +128,6 @@ namespace LumeniteSSSR {
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
-
 texture tSpec1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sSpec1 { Texture = tSpec1; AddressU = CLAMP; AddressV = CLAMP; };
 
@@ -142,7 +143,6 @@ sampler sBlueNoise { Texture = tBlueNoise; AddressU = REPEAT; AddressV = REPEAT;
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 float CalculateDepthFade(float depth)
 {
     float fadeStartDepth = DEPTH_BOUNDARY * DEPTH_FADE_START;
@@ -177,6 +177,7 @@ float3 CalculateBumpyNormal(float2 uv, float3 geoNormal)
 {
     float2 texelSize = BUFFER_PIXEL_SIZE * BUMP_SCALE;
     float3 lumaWeights = float3(0.299, 0.587, 0.114);
+    //use gamma space intentionally
     float lumaCenter = dot(GetBackBuffer(uv), lumaWeights);
     float lumaRight  = dot(GetBackBuffer(uv + float2(texelSize.x, 0.0)), lumaWeights);
     float lumaBottom = dot(GetBackBuffer(uv + float2(0.0, texelSize.y)), lumaWeights);
@@ -195,7 +196,6 @@ float3 CalculateBumpyNormal(float2 uv, float3 geoNormal)
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-
 float4 PS_TraceSpecular(VSOUT input) : SV_Target
 {
     float4 gbuffer = tex2D(sKernelNormals, input.uv);
@@ -343,7 +343,6 @@ float4 PS_ToDisplay(VSOUT input) : SV_Target
 /*----------------.
 | :: TECHNIQUE :: |
 '----------------*/
-
 technique LUMENITE_SSSR <
     ui_label = "LUMENITE: SSSR";
     ui_tooltip = "Stochastic Screen Space Reflections.";

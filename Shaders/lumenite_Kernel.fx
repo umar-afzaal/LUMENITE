@@ -25,18 +25,26 @@
         ========================================================================
 */
 
-#include "ReShade.fxh"
-#include "./include/LUMENITE_Projections.fxh"
-#include "./include/LUMENITE_Helpers.fxh"
+/*------------------.
+| :: DEFINITIONS :: |
+'------------------*/
+#define FOV 60.0
+#define NEAR_PLANE 0.01
 
 #ifndef DEBUG_KERNEL
 #define DEBUG_KERNEL 0
 #endif
 
+/*--------------.
+| :: HEADERS :: |
+'--------------*/
+#include "ReShade.fxh"
+#include "./include/LUMENITE_Projections.fxh"
+#include "./include/LUMENITE_Helpers.fxh"
+
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-
 #if DEBUG_KERNEL
 uniform int DEBUG_VIEW <
     ui_type = "combo";
@@ -54,7 +62,6 @@ uniform int DEBUG_VIEW <
 /*-------------.
 | :: EXPORT :: |
 '-------------*/
-
 //optical flow
 texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; };
@@ -71,7 +78,6 @@ namespace LumeniteKernel {
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
-
 //=== Motion vectors
 texture2D tCurrLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sCurrLuma { Texture = tCurrLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -109,7 +115,6 @@ sampler2D sPrevConfidence { Texture = tPrevConfidence; };
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 float3 GetColor(float2 uv)
 {
     return tex2Dlod(ReShade::BackBuffer, float4(uv, 0, 0)).rgb;
@@ -401,7 +406,6 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-
 float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     static const int2 offsets[13] = {
@@ -667,7 +671,6 @@ float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 /*----------------.
 | :: TECHNIQUE :: |
 '----------------*/
-
 technique Lumenite_Kernel <
     ui_label = "LUMENITE: Kernel";
     ui_tooltip = "Pre-effect for LumeniteFX shaders.";

@@ -25,19 +25,15 @@
         ========================================================================
 */
 
-#include "ReShade.fxh"
-#include "./include/lumenite_Projections.fxh"
-#include "./include/lumenite_Helpers.fxh"
-#include "./include/lumenite_ColorManagement.fxh"
-
 /*------------------.
 | :: DEFINITIONS :: |
 '------------------*/
-
 #ifndef RESOLUTION_SCALING
   #define RESOLUTION_SCALING 1
 #endif
 
+#define FOV 60.0
+#define NEAR_PLANE 0.01
 #define INITIAL_STEP_SCALE 0.9 //how small the very first step is (as a fraction of the avg. step size).
 #define STEP_GROWTH_FACTOR 1.2
 #define AO_MAX_MARCH_STEPS 15
@@ -53,10 +49,17 @@
     #define ATROUS_DILATION_2 2
 #endif
 
+/*--------------.
+| :: HEADERS :: |
+'--------------*/
+#include "ReShade.fxh"
+#include "./include/lumenite_Projections.fxh"
+#include "./include/lumenite_Helpers.fxh"
+#include "./include/lumenite_ColorManagement.fxh"
+
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-
 uniform bool DEBUG_VIEW <
     ui_label = "Show AO Mask";
     ui_tooltip = "Debug view for the AO. Shows raw AO.";
@@ -105,7 +108,6 @@ ui_type = "radio";
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-
 //===optical flow
 texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -122,7 +124,6 @@ namespace LumeniteRTAO {
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
-
 #if RESOLUTION_SCALING
     texture tAOTrace { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16F; };
     sampler sAOTrace { Texture = tAOTrace; AddressU = CLAMP; AddressV = CLAMP; };
@@ -143,7 +144,6 @@ sampler sBlueNoise { Texture = tBlueNoise; AddressU = REPEAT; AddressV = REPEAT;
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 //===hemisphere sampling
 void BuildOrthonormalBasis(float3 n, out float3 b1, out float3 b2)
 {
@@ -220,7 +220,6 @@ float ATrousFilter(float2 uv, sampler SourceSampler, int Dilation)
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-
 //===ambient occlusion
 float PS_TraceAO(VSOUT input) : SV_Target
 {

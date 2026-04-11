@@ -29,13 +29,6 @@
 
 #include "ReShade.fxh"
 
-/*------------------.
-| :: DEFINITIONS :: |
-'------------------*/
-
-#define FOV 70.0
-#define NEAR_PLANE 0.5
-
 /*--------------.
 | :: HELPERS :: |
 '--------------*/

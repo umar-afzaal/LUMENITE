@@ -25,16 +25,11 @@
         ========================================================================
 */
 
-#include "ReShade.fxh"
-#include "./include/lumenite_Projections.fxh"
-#include "./include/lumenite_Helpers.fxh"
-#include "./include/lumenite_ColorManagement.fxh"
-
 /*------------------.
 | :: DEFINITIONS :: |
 '------------------*/
-
-//===ambient occlusion
+#define FOV 60.0
+#define NEAR_PLANE 0.01
 #define INITIAL_STEP_SCALE 0.9 //how small the very first step is (as a fraction of the avg. step size).
 #define STEP_GROWTH_FACTOR 1.2
 #define ATROUS_DEPTH_WEIGHT_SCALE 300.0
@@ -42,10 +37,17 @@
 #define AO_MAX_MARCH_STEPS 100
 #define AO_RADIUS 0.7
 
+/*--------------.
+| :: HEADERS :: |
+'--------------*/
+#include "ReShade.fxh"
+#include "./include/lumenite_Projections.fxh"
+#include "./include/lumenite_Helpers.fxh"
+#include "./include/lumenite_ColorManagement.fxh"
+
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-
 uniform bool DEBUG_VIEW <
     ui_label = "Show AO Mask";
     ui_tooltip = "Debug view for the AO. Shows raw AO.";
@@ -87,7 +89,6 @@ uniform float AO_INTENSITY <
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-
 //===optical flow
 texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -104,7 +105,6 @@ namespace LumeniteLSAO {
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
-
 texture tAOTrace { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16F; }; // tracing at half-res
 sampler sAOTrace { Texture = tAOTrace; AddressU = CLAMP; AddressV = CLAMP; };
 
@@ -138,7 +138,6 @@ sampler sHiZMip5 { Texture = tHiZMip5; MagFilter = POINT; MinFilter = POINT; Mip
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 //===hemisphere Sampling
 void BuildOrthonormalBasis(float3 n, out float3 b1, out float3 b2)
 {
@@ -215,7 +214,6 @@ float ATrousFilter(float2 uv, sampler SourceSampler, int Dilation)
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-
 //===HiZ passes
 struct HiZData { float min_depth; };
 
