@@ -15,9 +15,9 @@ ii) LSAO (contact and large-scale shadowing).
 ![AnamorphicBloom poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/AnamorphicBloom_poster.jpg)
 Artistic bloom shader that creates the anamorphic lens aesthetic.
 
-## SSR - Screen Space Reflections
-![SSR poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/SSR_poster.jpg)
-Fast screen space Planar reflections.
+## SSSR - Stochastic Screen Space Reflections
+![SSSR poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/SSSR_poster.jpg)
+Crispy screen space reflections.
 
 ## LumaFlow - Dense Real-time Motion Estimation
 ![LumaFlow poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/LumaFlow_poster.jpg)
