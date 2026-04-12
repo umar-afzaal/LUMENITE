@@ -216,9 +216,18 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
     if (dot(mirrorDir, mirrorDir) < 0.001) { //mirror reflection validation chck
         return float4(0, 0, 0, 1);
     }
-    //jitter the ray
-    float2 rand = float2(tex2Dlod(sBlueNoise, float4(frac((input.vpos.xy + float(FRAME_COUNT % 256)) / 256.0), 0, 0)).r,
-                         tex2Dlod(sBlueNoise, float4(frac((input.vpos.xy + float(FRAME_COUNT % 256) * 1.618) / 256.0), 0, 0)).r);
+
+    //keep spatial UV static to preserve blueness
+    float2 blueNoiseUV = input.vpos.xy / 256.0;
+    float bnRed = tex2Dlod(sBlueNoise, float4(blueNoiseUV, 0, 0)).r;
+    float bnGreen = tex2Dlod(sBlueNoise, float4(blueNoiseUV + 0.5, 0, 0)).r;
+
+    //for temporal dithering, animate noise w. golden ratios
+    float2 rand = float2(
+        frac(bnRed + float(FRAME_COUNT % 64) * 0.618033988),
+        frac(bnGreen + float(FRAME_COUNT % 64) * 0.754877666)
+    );
+
     float3 jitterN = normalize(normal + float3((rand * 2.0 - 1.0) * ROUGHNESS * 0.2, 0.0));
     float3 rayDir = reflect(-viewDir, jitterN);
     if (dot(rayDir, normal) < 0.0) rayDir = mirrorDir; //prevent jitter from pushing ray inside the geometry

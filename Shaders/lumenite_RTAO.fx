@@ -240,10 +240,18 @@ float PS_TraceAO(VSOUT input) : SV_Target
     float3 startPos = UVToViewSpace(input.uv, depth, input);
     float3 tangent, bitangent;
     BuildOrthonormalBasis(normal, tangent, bitangent);
+
+    //keep spatial UV static to preserve blueness
+    float2 blueNoiseUV = input.vpos.xy / 256.0;
+    float bnRed = tex2Dlod(sBlueNoise, float4(blueNoiseUV, 0, 0)).r;
+    float bnGreen = tex2Dlod(sBlueNoise, float4(blueNoiseUV + 0.5, 0, 0)).r;
+
+    //for temporal dithering, animate noise w. golden ratios
     float2 rand = float2(
-        tex2Dlod(sBlueNoise, float4(frac((input.vpos.xy + float(FRAME_COUNT % 256)) / 256.0), 0, 0)).r,
-        tex2Dlod(sBlueNoise, float4(frac((input.vpos.xy + float(FRAME_COUNT % 256) * 1.618) / 256.0), 0, 0)).r
+        frac(bnRed + float(FRAME_COUNT % 64) * 0.618033988),
+        frac(bnGreen + float(FRAME_COUNT % 64) * 0.754877666)
     );
+
     float3 rayDir = GenerateHemisphereDirection(normal, rand, tangent, bitangent);
     float invDepth = rcp(depth);
     float totalRayLength = AO_RADIUS * depth;
