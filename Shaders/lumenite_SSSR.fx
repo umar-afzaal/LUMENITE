@@ -64,7 +64,7 @@ uniform float DEPTH_FADE_START <
 uniform int MAX_STEPS <
     ui_type = "drag";
     ui_min = 1; ui_max = 32; ui_step = 1;
-    ui_label = "Ray Precision";
+    ui_label = "Ray Resolution";
     ui_category = "";
     ui_tooltip = "";
 > = 32;
@@ -87,7 +87,7 @@ uniform float F0 <
 
 uniform float ROUGHNESS <
     ui_type = "drag";
-    ui_min = 0.0; ui_max = 1.0; ui_step = 0.001;
+    ui_min = 0.0; ui_max = 0.3; ui_step = 0.001;
     ui_label = "Roughness";
     ui_category = "";
     ui_tooltip = "";
