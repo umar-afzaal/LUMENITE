@@ -39,8 +39,8 @@
 | :: HEADERS :: |
 '--------------*/
 #include "ReShade.fxh"
-#include "./include/LUMENITE_Projections.fxh"
-#include "./include/LUMENITE_Helpers.fxh"
+#include "./include/lumenite_Projections.fxh"
+#include "./include/lumenite_Helpers.fxh"
 
 /*---------------.
 | :: UNIFORMS :: |

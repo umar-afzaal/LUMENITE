@@ -32,15 +32,12 @@
 /*------------------.
 | :: DEFINITIONS :: |
 '------------------*/
-
 #define PI 3.14159265359
 #define EPSILON 1e-6
 
 /*--------------.
 | :: UNIFORMS ::|
 '--------------*/
-
-//built-in temporal uniforms
 uniform float TIMER < source = "timer"; >;
 uniform float FRAME_TIME < source = "frametime"; >;
 uniform uint FRAME_COUNT < source = "framecount"; >;
@@ -48,7 +45,6 @@ uniform uint FRAME_COUNT < source = "framecount"; >;
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 bool CheckerboardSkip(uint2 currentPos, float scale)
 {
     //map current buffer pixel to full screen pixel.

@@ -36,7 +36,6 @@
 /*-------------------.
 | :: PREPROCESSOR :: |
 '-------------------*/
-
 #define HDR_WHITELEVEL 203
 
 #if BUFFER_COLOR_SPACE > 0
@@ -57,7 +56,6 @@
 /*------------------.
 | :: UI UNIFORMS :: |
 '------------------*/
-
 // uniform int SHOW_COLOR_SPACE <
 //     ui_category = "Color Management";
 //     ui_type = "combo";
@@ -92,7 +90,6 @@
 /*-------------------------.
 | :: TRANSFER FUNCTIONS :: |
 '-------------------------*/
-
 //=== sRGB
 float3 sRGBtoLinearAccurate(float3 r) {
     return (r <= 0.04045) ? (r / 12.92) : pow(abs(r + 0.055) / 1.055, 2.4);
@@ -212,7 +209,6 @@ float3 YCoCgToLinear(float3 r) {
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
 float3 ToLinearColorspace(float3 r, bool tonemap) {
     if (BUFFER_COLOR_SPACE == 2) r = r * (80.0 / HDR_WHITELEVEL); //scRGB
     else if (BUFFER_COLOR_SPACE == 3) r = PQtoLinear(r);

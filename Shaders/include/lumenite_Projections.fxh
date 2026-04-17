@@ -32,8 +32,7 @@
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
-
-//===vertex shader
+//VERTEX SHADER
 struct VSOUT
 {
     float4 vpos              : SV_Position;
@@ -67,7 +66,7 @@ VSOUT VS(uint id : SV_VertexID)
     return o;
 }
 
-//===projection functions
+//PROJECTION FUNCTIONS
 //normalized frustum
 //left-handed viewspace
 //normals point outwards
