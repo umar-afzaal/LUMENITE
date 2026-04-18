@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Helpers.fxh
-        Version    : 2026.02.28
+        Version    : 2026.04.19
         Author     : Afzaal (Kaidō)
         Description: Helper functions for Lumenite shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -34,6 +34,19 @@
 '------------------*/
 #define PI 3.14159265359
 #define EPSILON 1e-6
+
+#define D3D9   0x9000
+#define D3D10  0xa000
+#define D3D11  0xb000
+#define D3D12  0xc000
+#define OPENGL 0x10000
+#define VULKAN 0x20000
+
+#if __RENDERER__ >= D3D11
+ #define _GPGPU_ 1
+#else
+ #define _GPGPU_ 0
+#endif
 
 /*--------------.
 | :: UNIFORMS ::|
