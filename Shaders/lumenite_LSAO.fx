@@ -189,7 +189,6 @@ float ATrousFilter(float2 uv, sampler SourceSampler, int Dilation)
     float3 centerNormal = gbuffer.rgb;
     float centerDepth = gbuffer.a;
     if (centerDepth == 0 || centerDepth >= DEPTH_BOUNDARY) discard;
-
     float centerAO = tex2Dlod(SourceSampler, float4(uv, 0, 0)).r;
     float sum = centerAO;
     float totalWeight = 1.0;
@@ -211,41 +210,39 @@ float ATrousFilter(float2 uv, sampler SourceSampler, int Dilation)
     return sum / (totalWeight + EPSILON);
 }
 
+//HiZ Helpers
+float SamplePrevHiZ(float2 centerUV, sampler srcSampler, int srcMipLvl) {
+    float2 srcTexelSize = BUFFER_PIXEL_SIZE * pow(2, srcMipLvl);
+    float2 off[4] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(-0.5, 0.5), float2(0.5, 0.5) };
+    float minDepth = 1.0;
+    [unroll] for(int i=0; i<4; i++)
+        minDepth = min(minDepth, tex2D(srcSampler, centerUV + off[i] * srcTexelSize).r);
+    return minDepth;
+}
+
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-//===HiZ passes
-struct HiZData { float min_depth; };
-
-HiZData Sample2x2FromScene(float2 current_uv) {
-    float2 texel_size = ReShade::PixelSize;
-    float2 block_origin_uv = floor(current_uv / (texel_size * 2.0)) * (texel_size * 2.0);
-    float2 uvs[4] = { block_origin_uv + texel_size * float2(0.5, 0.5), block_origin_uv + texel_size * float2(1.5, 0.5),
-                      block_origin_uv + texel_size * float2(0.5, 1.5), block_origin_uv + texel_size * float2(1.5, 1.5) };
-    float d0 = ReShade::GetLinearizedDepth(uvs[0]); float d1 = ReShade::GetLinearizedDepth(uvs[1]);
-    float d2 = ReShade::GetLinearizedDepth(uvs[2]); float d3 = ReShade::GetLinearizedDepth(uvs[3]);
-    HiZData r;
-    r.min_depth = min(min(d0, d1), min(d2, d3));
-    return r;
+//===HiZ
+float PS_GenerateMip0(VSOUT input) : SV_Target
+{
+    float2 blockOriginUV = floor(input.uv / (BUFFER_PIXEL_SIZE * 2.0)) * (BUFFER_PIXEL_SIZE * 2.0);
+    float2 uvs[4] = { blockOriginUV + BUFFER_PIXEL_SIZE * float2(0.5, 0.5),
+                      blockOriginUV + BUFFER_PIXEL_SIZE * float2(1.5, 0.5),
+                      blockOriginUV + BUFFER_PIXEL_SIZE * float2(0.5, 1.5),
+                      blockOriginUV + BUFFER_PIXEL_SIZE * float2(1.5, 1.5) };
+    float d0 = ReShade::GetLinearizedDepth(uvs[0]);
+    float d1 = ReShade::GetLinearizedDepth(uvs[1]);
+    float d2 = ReShade::GetLinearizedDepth(uvs[2]);
+    float d3 = ReShade::GetLinearizedDepth(uvs[3]);
+    return min(min(d0, d1), min(d2, d3));
 }
 
-HiZData SampleFromPreviousHiZ(float2 center_uv, sampler s, int source_mip_level) {
-    float2 source_texel_size = ReShade::PixelSize * pow(2, source_mip_level);
-    float2 offsets[4] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(-0.5, 0.5), float2(0.5, 0.5) };
-    float min_depth = 1.0;
-    [unroll] for(int i=0; i<4; i++)
-        min_depth = min(min_depth, tex2D(s, center_uv + offsets[i] * source_texel_size).r);
-    HiZData r;
-    r.min_depth = min_depth;
-    return r;
-}
-
-float PS_GenerateMip0(VSOUT input) : SV_Target { return Sample2x2FromScene   (input.uv).min_depth;              }
-float PS_ReduceMip1  (VSOUT input) : SV_Target { return SampleFromPreviousHiZ(input.uv, sHiZMip0, 0).min_depth; }
-float PS_ReduceMip2  (VSOUT input) : SV_Target { return SampleFromPreviousHiZ(input.uv, sHiZMip1, 1).min_depth; }
-float PS_ReduceMip3  (VSOUT input) : SV_Target { return SampleFromPreviousHiZ(input.uv, sHiZMip2, 2).min_depth; }
-float PS_ReduceMip4  (VSOUT input) : SV_Target { return SampleFromPreviousHiZ(input.uv, sHiZMip3, 3).min_depth; }
-float PS_ReduceMip5  (VSOUT input) : SV_Target { return SampleFromPreviousHiZ(input.uv, sHiZMip4, 4).min_depth; }
+float PS_ReduceMip1  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, sHiZMip0, 0); }
+float PS_ReduceMip2  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, sHiZMip1, 1); }
+float PS_ReduceMip3  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, sHiZMip2, 2); }
+float PS_ReduceMip4  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, sHiZMip3, 3); }
+float PS_ReduceMip5  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, sHiZMip4, 4); }
 
 
 //===ambient occlusion

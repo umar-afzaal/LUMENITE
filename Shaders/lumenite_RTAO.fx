@@ -258,6 +258,7 @@ float PS_TraceAO(VSOUT input) : SV_Target
     float initialStepScale = INITIAL_STEP_SCALE * rcp((float)AO_MAX_MARCH_STEPS);
     float stepSize = totalRayLength * initialStepScale;
     float3 rayPos = mad(rayDir, stepSize * 0.5, startPos);
+    rayPos += normal * depth * 0.0005; //push ray slightly OUTWARD along the normal; clears staircase artifacts
     float occlusion = 0.0;
 
     [loop]
