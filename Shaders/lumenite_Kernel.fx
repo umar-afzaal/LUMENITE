@@ -103,8 +103,8 @@ sampler2D sLumaFlow16A { Texture = tLumaFlow16A; MagFilter = POINT; MinFilter = 
 texture2D tLumaFlow16B { Width = BUFFER_WIDTH/16; Height = BUFFER_HEIGHT/16; Format = RG16F; };
 sampler2D sLumaFlow16B { Texture = tLumaFlow16B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow8 { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-sampler2D sLumaFlow8 { Texture = tLumaFlow8; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tLumaFlow8A { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+sampler2D sLumaFlow8A { Texture = tLumaFlow8A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
 texture2D tPrevFrameFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sPrevFrameFlow { Texture = tPrevFrameFlow; MagFilter = POINT; MinFilter = POINT; };
@@ -510,7 +510,7 @@ float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 
 float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9_3x3(sLumaFlow8, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    return Median9_3x3(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
 float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -520,7 +520,7 @@ float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 
 float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    float2 flow = BilateralBlur(sLumaFlow8, sCurrLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    float2 flow = BilateralBlur(sLumaFlow8A, sCurrLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
     //kill sub-pixel flow noise
     float flowPixelMag = length(flow / BUFFER_PIXEL_SIZE);
     flow *= smoothstep(0.2, 0.8, flowPixelMag);
@@ -684,9 +684,9 @@ technique Lumenite_Kernel <
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow32;      RenderTarget = tLumaFlow32B;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow16;      RenderTarget = tLumaFlow16A;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow16;      RenderTarget = tLumaFlow16B;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8;      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8A;      }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8A;      RenderTarget = tLumaFlow;       }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8;      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8A;      }
     pass { VertexShader = PostProcessVS; PixelShader = PS_BlurFlow;          RenderTarget = tLumaFlow;       }
     pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeConfidence; RenderTarget = tFlowConfidence; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow;         RenderTarget = tPrevFrameFlow;  }
