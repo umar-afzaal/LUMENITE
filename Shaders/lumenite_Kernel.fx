@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Kernel.fx
-        Version    : 2026.04.11
+        Version    : 2026.04.20
         Author     : Afzaal (Kaidō)
         Description: Pre-effect for various LumeniteFX shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -45,6 +45,7 @@
 #include "ReShade.fxh"
 #include "./include/lumenite_Projections.fxh"
 #include "./include/lumenite_Helpers.fxh"
+#include "./include/lumenite_Compute.fxh"
 
 /*---------------.
 | :: UNIFORMS :: |
@@ -82,9 +83,12 @@ namespace LumeniteKernel {
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
-//=== Motion vectors
 texture2D tCurrLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sCurrLuma { Texture = tCurrLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+
+#if _GPGPU_
+    storage stCurrLuma { Texture = tCurrLuma; };
+#endif
 
 texture2D tPrevLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sPrevLuma { Texture = tPrevLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -483,38 +487,81 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
 /*--------------------.
 | :: PIXEL SHADERS :: |
 '--------------------*/
-float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
-{
-    static const int2 offsets[13] = {
-                             int2(0,-2),
-                 int2(-1,-1),int2(0,-1),int2(1,-1),
-      int2(-2,0),int2(-1,0), int2(0,0), int2(1,0), int2(2,0),
-                 int2(-1,1), int2(0,1), int2(1,1),
-                             int2(0,2)
-    };
-    float lumaSum = 0.0;
-    float weightSum = 0.0;
-    //gaussian (ish) weights for a dense 13-point pattern
-    float weights[13] = {
-                    1,              //(0,-2)
-             3,     4,     3,       //diagonals, cardinal, diagonal
-        1,   4,     6,     4,   1,  //far, cardinals, center, cardinals, far
-             3,     4,     3,       //diagonals, cardinal, diagonal
-                    1               //(0,2)
-    };
+static const int2 LUMA_OFFSETS[13] = {
+                         int2(0,-2),
+             int2(-1,-1),int2(0,-1),int2(1,-1),
+  int2(-2,0),int2(-1,0), int2(0,0), int2(1,0), int2(2,0),
+             int2(-1,1), int2(0,1), int2(1,1),
+                         int2(0,2)
+};
 
-    [unroll] for(int i = 0; i < 13; i++) {
-        float2 sampleUV = uv + float2(offsets[i]) * BUFFER_PIXEL_SIZE;
-        float3 color = GetColor(sampleUV);
-        float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
-        luma = luma * rcp(1.0 + luma); //reinhard compression for HDR stability
-        float weight = weights[i];
-        lumaSum += luma * weight;
-        weightSum += weight;
+//gaussian (ish) weights for a dense 13-point kernel
+static const float LUMA_WEIGHTS[13] = {
+                1,              //(0,-2)
+         3,     4,     3,       //diagonals, cardinal, diagonal
+    1,   4,     6,     4,   1,  //far, cardinals, center, cardinals, far
+         3,     4,     3,       //diagonals, cardinal, diagonal
+                1               //(0,2)
+};
+
+#if _GPGPU_
+    #define LUMA_GS        16
+    #define LUMA_BORDER    2
+    #define LUMA_TILE      (LUMA_GS + LUMA_BORDER * 2)   //20×20 = 400 texels
+
+    groupshared float gs_cluma[LUMA_TILE * LUMA_TILE];    //400 floats = 1600 bytes LDS
+
+    void CS_CurrLuma(CSIN input)
+    {
+        //co-op tile load: 256 threads load 400 texels
+        int2 tileOrigin = int2(input.groupid.xy) * LUMA_GS - LUMA_BORDER; //tileOrigin is top-left pixel of this tile in screen space (can be -ve at borders)
+        [unroll] for(uint t = input.threadid; t < LUMA_TILE * LUMA_TILE; t += LUMA_GS * LUMA_GS) //max 2 iterations: ceil(400/256)
+        {
+            int2   loadPx  = tileOrigin + int2(t % LUMA_TILE, t / LUMA_TILE);
+                   loadPx  = clamp(loadPx, 0, int2(BUFFER_WIDTH - 1, BUFFER_HEIGHT - 1));
+            float2 loadUV  = (float2(loadPx) + 0.5) * BUFFER_PIXEL_SIZE;
+            float3 color   = GetColor(loadUV);
+            float  luma    = dot(color, float3(0.2126, 0.7152, 0.0722));
+            gs_cluma[t]    = luma * rcp(1.0 + luma);       //reinhard done ONCE per texel, not per tap
+        }
+
+        barrier();
+
+        //OOB guard
+        uint2 outPx = input.groupid.xy * LUMA_GS + input.groupthreadid.xy;
+        if(outPx.x >= BUFFER_WIDTH || outPx.y >= BUFFER_HEIGHT) return;
+
+        //each thread accumulates its 13 taps from LDS
+        //this thread's center in tile space
+        int2  localCenter = int2(input.groupthreadid.xy) + LUMA_BORDER;
+        float lumaSum     = 0.0;
+
+        [unroll]
+        for(int k = 0; k < 13; k++)
+        {
+            int2 tilePos = localCenter + LUMA_OFFSETS[k];
+            lumaSum += gs_cluma[tilePos.y * LUMA_TILE + tilePos.x] * LUMA_WEIGHTS[k];
+        }
+
+        tex2Dstore(stCurrLuma, outPx, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const
     }
-
-    return lumaSum / weightSum;
-}
+#else
+    float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+    {
+        float lumaSum = 0.0;
+        float weightSum = 0.0;
+        [unroll] for(int i = 0; i < 13; i++) {
+            float2 sampleUV = uv + float2(LUMA_OFFSETS[i]) * BUFFER_PIXEL_SIZE;
+            float3 color = GetColor(sampleUV);
+            float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
+            luma = luma * rcp(1.0 + luma); //reinhard compression for HDR stability
+            float weight = LUMA_WEIGHTS[i];
+            lumaSum += luma * weight;
+            weightSum += weight;
+        }
+        return lumaSum / weightSum;
+    }
+#endif //_GPGPU_
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -773,7 +820,16 @@ technique Lumenite_Kernel <
 >
 {
     //optical flow
+#if _GPGPU_
+    pass
+    {
+        ComputeShader  = CS_CurrLuma<LUMA_GS, LUMA_GS>;
+        DispatchSizeX  = (BUFFER_WIDTH  + LUMA_GS - 1) / LUMA_GS;
+        DispatchSizeY  = (BUFFER_HEIGHT + LUMA_GS - 1) / LUMA_GS;
+    }
+#else
     pass { VertexShader = PostProcessVS; PixelShader = PS_CurrLuma;          RenderTarget = tCurrLuma;       }
+#endif
     pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;    RenderTarget = tLumaFlow128;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow64;      RenderTarget = tLumaFlow64A;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow64;      RenderTarget = tLumaFlow64B;    }

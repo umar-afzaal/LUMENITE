@@ -19,7 +19,7 @@
         Filename   : lumenite_Compute.fxh
         Version    : 2026.04.19
         Author     : Afzaal (Kaidō)
-        Description: Helper for compute enabled platforms.
+        Description: Helpers for compute enabled platforms.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
 
         ========================================================================
