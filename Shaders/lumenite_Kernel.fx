@@ -272,8 +272,7 @@ float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 po
     float samplesA[9], samplesB[9];
     float meanA = 0.0, meanB = 0.0;
 
-    [unroll]
-    for(int i = 0; i < 9; i++)
+    [unroll] for(int i = 0; i < 9; i++)
     {
         float2 offset = float2(offsets[i]) * texelSize;
         samplesA[i] = tex2Dlod(currLumaSrc, float4(posA + offset, 0, mip)).r;
@@ -295,25 +294,21 @@ float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 po
     return ((err / 9.0) + EPSILON);
 }
 
-float2 Median9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+float2 Median9_3x3(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
 {
     float2 v[9];
     int idx = 0;
-    [unroll] for(int dy = -1; dy <= 1; dy++) {
-        [unroll] for(int dx = -1; dx <= 1; dx++) {
+    [unroll] for(int dy = -1; dy <= 1; dy++) for(int dx = -1; dx <= 1; dx++)
             v[idx++] = tex2Dlod(flowSrc, float4(uv + float2(dx, dy) * texelSize, 0, mip)).xy;
-        }
-    }
+
     //bubble sort ensures the Median lands in v[4], only needs 5 passes
     //indices 4,5,6,7,8 contain the 5 largest items, so v[4] is the median
     float2 temp;
-    [unroll] for(int k = 0; k < 5; k++) {
-        [unroll] for(int i = 0; i < 8 - k; i++) { //checks decrease as right side gets sorted
+    [unroll] for(int k = 0; k < 5; k++) for(int i = 0; i < 8 - k; i++) { //checks decrease as right side gets sorted
             float2 a = v[i];
             float2 b = v[i+1];
             v[i]   = min(a, b);
             v[i+1] = max(a, b);
-        }
     }
 
     return v[4];
@@ -335,7 +330,7 @@ float2 BilateralBlur(sampler2D motionSrc, sampler2D lumaSrc, float2 uv, float2 t
     float2 flowSum     = 0.0;
     float  weightSum   = 0.0;
 
-    for (int y = -2; y <= 2; ++y) for (int x = -2; x <= 2; ++x) {
+    [unroll] for (int y = -2; y <= 2; ++y) for (int x = -2; x <= 2; ++x) {
             float2 offset = float2(x, y) * texelSize;
             float2 sampleUV = uv + offset;
             float2 neighborFlow  = tex2Dlod(motionSrc, float4(sampleUV, 0, 0)).xy;
@@ -426,7 +421,7 @@ float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
                     1               //(0,2)
     };
 
-    [loop] for(int i = 0; i < 13; i++) {
+    [unroll] for(int i = 0; i < 13; i++) {
         float2 sampleUV = uv + float2(offsets[i]) * BUFFER_PIXEL_SIZE;
         float3 color = GetColor(sampleUV);
         float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
@@ -485,7 +480,7 @@ float2 PS_RefineFlow64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 
 float2 PS_FilterFlow64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9(sLumaFlow64A, uv, BUFFER_PIXEL_SIZE*64.0, 6);
+    return Median9_3x3(sLumaFlow64A, uv, BUFFER_PIXEL_SIZE*64.0, 6);
 }
 
 float2 PS_RefineFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -495,7 +490,7 @@ float2 PS_RefineFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 
 float2 PS_FilterFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9(sLumaFlow32A, uv, BUFFER_PIXEL_SIZE*32.0, 5);
+    return Median9_3x3(sLumaFlow32A, uv, BUFFER_PIXEL_SIZE*32.0, 5);
 }
 
 float2 PS_RefineFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -505,7 +500,7 @@ float2 PS_RefineFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 
 float2 PS_FilterFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9(sLumaFlow16A, uv, BUFFER_PIXEL_SIZE*16.0, 4);
+    return Median9_3x3(sLumaFlow16A, uv, BUFFER_PIXEL_SIZE*16.0, 4);
 }
 
 float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -515,12 +510,12 @@ float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 
 float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9(sLumaFlow8, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    return Median9_3x3(sLumaFlow8, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
 float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    return Median9_3x3(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
 float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
