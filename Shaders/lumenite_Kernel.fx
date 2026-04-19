@@ -35,6 +35,10 @@
 #define DEBUG_KERNEL 0
 #endif
 
+#ifndef RENDER_MODE
+#define RENDER_MODE 0
+#endif
+
 /*--------------.
 | :: HEADERS :: |
 '--------------*/
@@ -105,6 +109,11 @@ sampler2D sLumaFlow16B { Texture = tLumaFlow16B; MagFilter = POINT; MinFilter = 
 
 texture2D tLumaFlow8A { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow8A { Texture = tLumaFlow8A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+
+#if RENDER_MODE
+    texture2D tLumaFlow8B { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+    sampler2D sLumaFlow8B { Texture = tLumaFlow8B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+#endif
 
 texture2D tPrevFrameFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sPrevFrameFlow { Texture = tPrevFrameFlow; MagFilter = POINT; MinFilter = POINT; };
@@ -314,6 +323,79 @@ float2 Median9_3x3(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
     return v[4];
 }
 
+float2 Median9_5x5(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+{
+    static const int2 SPARSE_5X5[9] = {
+        int2(-2,-2), int2(0,-2), int2(2,-2),
+        int2(-2,0),  int2(0,0),  int2(2,0),
+        int2(-2,2),  int2(0,2),  int2(2,2)
+    };
+    float centerDepth = GetDepth(uv);
+    float2 v[9];
+    uint validCount = 0;
+
+    [unroll] for(int i = 0; i < 9; i++) {
+        float2 sampleUV = uv + float2(SPARSE_5X5[i]) * texelSize;
+        float sampleDepth = GetDepth(sampleUV);
+        bool isValid = abs(centerDepth - sampleDepth) <= 0.01;
+        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38); //pad invalid samples with a massive number so they get sorted to the very end
+        validCount += isValid ? 1u : 0u;
+    }
+
+    if(validCount < 3u) return tex2Dlod(flowSrc, float4(uv, 0, mip)).xy;
+
+    //full sort because target median index fluctuates b/w 1 and 4
+    [unroll] for(int k = 0; k < 8; k++) for(int j = 0; j < 8 - k; j++) {
+            float2 a = v[j];
+            float2 b = v[j+1];
+            v[j]   = min(a, b);
+            v[j+1] = max(a, b);
+    }
+
+    uint medianIdx = validCount / 2u;
+    //resolve median w/o dynamic array indexing; forces the compiler to keep 'v' entirely in registers
+    float2 result = v[1]; //fallback for validCount == 3 (medianIdx 1)
+    if (medianIdx == 2u) result = v[2];
+    if (medianIdx == 3u) result = v[3];
+    if (medianIdx == 4u) result = v[4];
+    return result;
+}
+
+float2 Median9_7x7(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+{
+    static const int2 SPARSE_7X7[9] = {
+        int2(-3,-3), int2(0,-3), int2(3,-3),
+        int2(-3,0),  int2(0,0),  int2(3,0),
+        int2(-3,3),  int2(0,3),  int2(3,3)
+    };
+    float centerDepth = GetDepth(uv);
+    float2 v[9];
+    uint validCount = 0;
+    [unroll] for(int i = 0; i < 9; i++) {
+        float2 sampleUV = uv + float2(SPARSE_7X7[i]) * texelSize;
+        float sampleDepth = GetDepth(sampleUV);
+        bool isValid = abs(centerDepth - sampleDepth) <= 0.01;
+        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38);
+        validCount += isValid ? 1u : 0u;
+    }
+
+    if(validCount < 3u) return tex2Dlod(flowSrc, float4(uv, 0, mip)).xy;
+
+    [unroll] for(int k = 0; k < 8; k++) for(int j = 0; j < 8 - k; j++) {
+            float2 a = v[j];
+            float2 b = v[j+1];
+            v[j]   = min(a, b);
+            v[j+1] = max(a, b);
+    }
+
+    uint medianIdx = validCount / 2u;
+    float2 result = v[1];
+    if (medianIdx == 2u) result = v[2];
+    if (medianIdx == 3u) result = v[3];
+    if (medianIdx == 4u) result = v[4];
+    return result;
+}
+
 float2 BilateralBlur(sampler2D motionSrc, sampler2D lumaSrc, float2 uv, float2 texelSize, uint mip)
 {
     float centerDepth = GetDepth(uv);
@@ -510,13 +592,28 @@ float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 
 float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
+#if RENDER_MODE
+    return Median9_7x7(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+#else
     return Median9_3x3(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+#endif
 }
 
 float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
+#if RENDER_MODE
+    return Median9_5x5(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+#else
     return Median9_3x3(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+#endif
 }
+
+#if RENDER_MODE
+    float2 PS_FilterFlow8C(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+    {
+        return Median9_3x3(sLumaFlow8B, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    }
+#endif
 
 float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -684,9 +781,14 @@ technique Lumenite_Kernel <
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow32;      RenderTarget = tLumaFlow32B;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow16;      RenderTarget = tLumaFlow16A;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow16;      RenderTarget = tLumaFlow16B;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8A;      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8A;     }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8A;      RenderTarget = tLumaFlow;       }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8A;      }
+#if RENDER_MODE
+    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8B;     }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8C;      RenderTarget = tLumaFlow8A;     }
+#else
+    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8A;     }
+#endif
     pass { VertexShader = PostProcessVS; PixelShader = PS_BlurFlow;          RenderTarget = tLumaFlow;       }
     pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeConfidence; RenderTarget = tFlowConfidence; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow;         RenderTarget = tPrevFrameFlow;  }
@@ -697,9 +799,9 @@ technique Lumenite_Kernel <
     pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget = tKernelNormals; }
 
     //debug views
-    #if DEBUG_KERNEL
+#if DEBUG_KERNEL
     pass { VertexShader = PostProcessVS; PixelShader = PS_Debug; }
-    #endif
+#endif
 }
 
 }
