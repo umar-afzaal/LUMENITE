@@ -32,11 +32,11 @@
 #define NEAR_PLANE 0.01
 
 #ifndef DEBUG_KERNEL
-#define DEBUG_KERNEL 0
+    #define DEBUG_KERNEL 0
 #endif
 
-#ifndef RENDER_MODE
-#define RENDER_MODE 0
+#ifndef RENDER_QUALITY
+    #define RENDER_QUALITY 0
 #endif
 
 /*--------------.
@@ -114,7 +114,7 @@ sampler2D sLumaFlow16B { Texture = tLumaFlow16B; MagFilter = POINT; MinFilter = 
 texture2D tLumaFlow8A { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow8A { Texture = tLumaFlow8A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-#if RENDER_MODE
+#if RENDER_QUALITY
     texture2D tLumaFlow8B { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
     sampler2D sLumaFlow8B { Texture = tLumaFlow8B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 #endif
@@ -285,8 +285,7 @@ float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 po
     float samplesA[9], samplesB[9];
     float meanA = 0.0, meanB = 0.0;
 
-    [unroll] for(int i = 0; i < 9; i++)
-    {
+    [unroll] for(int i = 0; i < 9; i++) {
         float2 offset = float2(offsets[i]) * texelSize;
         samplesA[i] = tex2Dlod(currLumaSrc, float4(posA + offset, 0, mip)).r;
         samplesB[i] = tex2Dlod(prevLumaSrc, float4(posB + offset, 0, mip)).r;
@@ -298,11 +297,8 @@ float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 po
 
     //SAD on the normalized samples
     float err = 0.0;
-    [unroll]
-    for(int i = 0; i < 9; i++)
-    {
+    [unroll] for(int i = 0; i < 9; i++)
         err += abs((samplesA[i] - meanA) - (samplesB[i] - meanB));
-    }
 
     return ((err / 9.0) + EPSILON);
 }
@@ -375,6 +371,7 @@ float2 Median9_7x7(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
     float centerDepth = GetDepth(uv);
     float2 v[9];
     uint validCount = 0;
+
     [unroll] for(int i = 0; i < 9; i++) {
         float2 sampleUV = uv + float2(SPARSE_7X7[i]) * texelSize;
         float sampleDepth = GetDepth(sampleUV);
@@ -515,8 +512,7 @@ static const float LUMA_WEIGHTS[13] = {
     {
         //co-op tile load: 256 threads load 400 texels
         int2 tileOrigin = int2(input.groupid.xy) * LUMA_GS - LUMA_BORDER; //tileOrigin is top-left pixel of this tile in screen space (can be -ve at borders)
-        [unroll] for(uint t = input.threadid; t < LUMA_TILE * LUMA_TILE; t += LUMA_GS * LUMA_GS) //max 2 iterations: ceil(400/256)
-        {
+        [unroll] for(uint t = input.threadid; t < LUMA_TILE * LUMA_TILE; t += LUMA_GS * LUMA_GS) { //max 2 iterations: ceil(400/256)
             int2   loadPx  = tileOrigin + int2(t % LUMA_TILE, t / LUMA_TILE);
                    loadPx  = clamp(loadPx, 0, int2(BUFFER_WIDTH - 1, BUFFER_HEIGHT - 1));
             float2 loadUV  = (float2(loadPx) + 0.5) * BUFFER_PIXEL_SIZE;
@@ -536,14 +532,12 @@ static const float LUMA_WEIGHTS[13] = {
         int2  localCenter = int2(input.groupthreadid.xy) + LUMA_BORDER;
         float lumaSum     = 0.0;
 
-        [unroll]
-        for(int k = 0; k < 13; k++)
-        {
+        [unroll] for(int k = 0; k < 13; k++) {
             int2 tilePos = localCenter + LUMA_OFFSETS[k];
             lumaSum += gs_cluma[tilePos.y * LUMA_TILE + tilePos.x] * LUMA_WEIGHTS[k];
         }
 
-        tex2Dstore(stCurrLuma, outPx, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const
+        tex2Dstore(stCurrLuma, outPx, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const.
     }
 #else
     float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -574,25 +568,18 @@ float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Ta
     //candidate seeds for the coarsest level
     float2 prevSeed   = tex2D(sPrevFrameFlow, uv).xy;
     float2 zeroSeed   = float2(0, 0);
-
     float prevCost   = ZMSAD(sCurrLuma, sPrevLuma, uv, uv + prevSeed,   texelSize, mip);
     float zeroCost   = ZMSAD(sCurrLuma, sPrevLuma, uv, uv + zeroSeed,   texelSize, mip);
 
-    //pick better candidate as seed
-    float2 seed = (zeroCost < prevCost) ? zeroSeed : prevSeed;
-
-    //start by assuming seed is the best
+    float2 seed = (zeroCost < prevCost) ? zeroSeed : prevSeed; //pick better candidate as seed
     float2 bestFlow = seed;
     float minCost = ZMSAD(sCurrLuma, sPrevLuma, uv, uv+seed, texelSize, mip);
-
     //search in a grid AROUND the seed
     for (int y = -SEARCH_RADIUS; y <= SEARCH_RADIUS; ++y) for (int x = -SEARCH_RADIUS; x <= SEARCH_RADIUS; ++x) {
             if (x == 0 && y == 0) continue;
-
             float2 candidateFlow = seed + float2(x, y) * texelSize;
             float cost = ZMSAD(sCurrLuma, sPrevLuma, uv, uv + candidateFlow, texelSize, mip);
-            if (cost < minCost)
-            {
+            if (cost < minCost) {
                 minCost = cost;
                 bestFlow = candidateFlow;
                 if (minCost < 0.01) //near-perfect match found
@@ -639,7 +626,7 @@ float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 
 float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-#if RENDER_MODE
+#if RENDER_QUALITY
     return Median9_7x7(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 #else
     return Median9_3x3(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
@@ -648,14 +635,14 @@ float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 
 float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-#if RENDER_MODE
+#if RENDER_QUALITY
     return Median9_5x5(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 #else
     return Median9_3x3(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 #endif
 }
 
-#if RENDER_MODE
+#if RENDER_QUALITY
     float2 PS_FilterFlow8C(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     {
         return Median9_3x3(sLumaFlow8B, uv, BUFFER_PIXEL_SIZE*8.0, 3);
@@ -691,8 +678,7 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
         float2(-1,0), float2(0, 0), float2(1,0),
                       float2(0,-1)
     };
-    [unroll]
-    for(int i = 0; i < 5; i++) {
+    [unroll] for(int i = 0; i < 5; i++) {
         float valCurr = tex2Dlod(sCurrLuma, float4(uv + offsets[i] * lumaTexSize, 0, 2)).r;
         float valPrev = tex2Dlod(sPrevLuma, float4(prevUV + offsets[i] * lumaTexSize, 0, 2)).r;
         sumX += valCurr; sumX2 += valCurr * valCurr;
@@ -839,7 +825,7 @@ technique Lumenite_Kernel <
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow16;      RenderTarget = tLumaFlow16B;    }
     pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8A;     }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8A;      RenderTarget = tLumaFlow;       }
-#if RENDER_MODE
+#if RENDER_QUALITY
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8B;     }
     pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8C;      RenderTarget = tLumaFlow8A;     }
 #else
