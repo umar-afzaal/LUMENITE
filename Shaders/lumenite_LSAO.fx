@@ -30,8 +30,6 @@
 '------------------*/
 #define FOV 60.0
 #define NEAR_PLANE 0.01
-#define INITIAL_STEP_SCALE 0.9 //how small the very first step is (as a fraction of the avg. step size).
-#define STEP_GROWTH_FACTOR 1.2
 #define ATROUS_DEPTH_WEIGHT_SCALE 300.0
 #define ATROUS_NORMAL_WEIGHT_SCALE 20.0
 #define AO_MAX_MARCH_STEPS 100
@@ -193,19 +191,15 @@ float ATrousFilter(float2 uv, sampler SourceSampler, int Dilation)
     float sum = centerAO;
     float totalWeight = 1.0;
 
-    for (int y = -1; y <= 1; y++)
-    {
-        for (int x = -1; x <= 1; x++)
-        {
-            float2 sampleUV = uv + float2(x, y) * Dilation * ReShade::PixelSize;
-            float sampleAO = tex2Dlod(SourceSampler, float4(sampleUV, 0, 0)).r;
-            gbuffer = tex2Dlod(sKernelNormals, float4(sampleUV, 0, 0));
-            float3 sampleNormal = gbuffer.rgb;
-            float sampleDepth = gbuffer.a;
-            float weight = ComputeATrousWeight(centerDepth, centerNormal, sampleDepth, sampleNormal);
-            sum += sampleAO * weight;
-            totalWeight += weight;
-        }
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        float2 sampleUV = uv + float2(x, y) * Dilation * ReShade::PixelSize;
+        float sampleAO = tex2Dlod(SourceSampler, float4(sampleUV, 0, 0)).r;
+        gbuffer = tex2Dlod(sKernelNormals, float4(sampleUV, 0, 0));
+        float3 sampleNormal = gbuffer.rgb;
+        float sampleDepth = gbuffer.a;
+        float weight = ComputeATrousWeight(centerDepth, centerNormal, sampleDepth, sampleNormal);
+        sum += sampleAO * weight;
+        totalWeight += weight;
     }
     return sum / (totalWeight + EPSILON);
 }
@@ -279,8 +273,6 @@ float PS_TraceAO(VSOUT input) : SV_Target
     float3 currentPos = startPos + rayDir * stepSize;
     float occlusion = 0.0;
     float t = stepSize;
-    float prevDiff = -1.0;
-    float3 prevRayPos = currentPos;
 
     [loop]
     for (int step = 0; step < AO_MAX_MARCH_STEPS; step++) {
@@ -312,8 +304,6 @@ float PS_TraceAO(VSOUT input) : SV_Target
             float leap = (HiZDepth - currentPos.z) * 0.1;
             currentPos += rayDir * leap;
             t += leap;
-            prevDiff = currentPos.z - HiZDepth;
-            prevRayPos = currentPos;
             continue;
         }
 
@@ -336,8 +326,6 @@ float PS_TraceAO(VSOUT input) : SV_Target
 
         currentPos += rayDir * stepSize;
         t += stepSize;
-        prevDiff = depthDiff;
-        prevRayPos = currentPos;
     }
 
     float aoFactor = 1.0 - saturate(occlusion * AO_INTENSITY);
