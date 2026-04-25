@@ -332,12 +332,10 @@ float2 PS_StoreAO(VSOUT input) : SV_Target
 
 float2 PS_ATrousPass1(VSOUT input) : SV_Target { return ATrousFilter(sAO1, input.uv, 2); }
 
-float2 PS_ATrousPass2(VSOUT input) : SV_Target { return ATrousFilter(sAO2, input.uv, 4); }
-
 float4 PS_ToDisplay(VSOUT input) : SV_Target
 {
     float depth = tex2D(sKernelNormals, input.uv).a;
-    float ao = tex2D(sAO1, input.uv).r; //stable AO mask (fades to 1.0)
+    float ao = ATrousFilter(sAO2, input.uv, 4).r; //stable AO mask (fades to 1.0)
     if (DEBUG_VIEW) {
         #if BUFFER_COLOR_SPACE > 1
             return float4(ToOutputColorspace(ao.xxx, true), 1.0);
@@ -372,7 +370,6 @@ technique Lumenite_LSAO <
     pass { VertexShader = VS; PixelShader = PS_TemporalFilter; RenderTarget = tAO1;     }
     pass { VertexShader = VS; PixelShader = PS_StoreAO;        RenderTarget = tPrevAO;  }
     pass { VertexShader = VS; PixelShader = PS_ATrousPass1;    RenderTarget = tAO2;     }
-    pass { VertexShader = VS; PixelShader = PS_ATrousPass2;    RenderTarget = tAO1;     }
     pass { VertexShader = VS; PixelShader = PS_ToDisplay;                               }
 }
 
