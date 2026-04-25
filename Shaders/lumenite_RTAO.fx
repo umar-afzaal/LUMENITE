@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_RTAO.fx
-        Version    : 2026.04.11
+        Version    : 2026.04.25
         Author     : Afzaal (Kaidō)
         Description: Ray Traced Ambient Occlusion.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -36,14 +36,6 @@
 #define AO_RADIUS 0.02
 #define ATROUS_DEPTH_WEIGHT_SCALE 800.0
 #define ATROUS_NORMAL_WEIGHT_SCALE 13.0
-
-// #if RESOLUTION_SCALING
-//     #define ATROUS_DILATION_1 2
-//     #define ATROUS_DILATION_2 4
-// #else
-//     #define ATROUS_DILATION_1 1
-//     #define ATROUS_DILATION_2 2
-// #endif
 
 /*--------------.
 | :: HEADERS :: |

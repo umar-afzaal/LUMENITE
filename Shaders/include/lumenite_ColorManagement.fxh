@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_ColorManagement.fxh
-        Version    : 2026.02.28
+        Version    : 2026.04.25
         Author     : Afzaal (Kaidō)
         Description: Provides color management including color space detection,
                      color space transfers and tonemapping.
@@ -36,7 +36,9 @@
 /*-------------------.
 | :: PREPROCESSOR :: |
 '-------------------*/
-#define HDR_WHITELEVEL 203
+#ifndef HDR_WHITELEVEL
+    #define HDR_WHITELEVEL 203
+#endif
 
 #if BUFFER_COLOR_SPACE > 0
     //already defined by ReShade
