@@ -112,9 +112,7 @@ sampler sAOTrace { Texture = tAOTrace; AddressU = CLAMP; AddressV = CLAMP; MagFi
 
 texture tAO1 { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = RG16F; };
 sampler sAO1 { Texture = tAO1; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
-
-texture tAO2 { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = RG16F; };
-sampler sAO2 { Texture = tAO2; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+sampler sAO1Linear { Texture = tAO1; AddressU = CLAMP; AddressV = CLAMP; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; };
 
 texture tPrevAO { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = RG16F; };
 sampler sPrevAO { Texture = tPrevAO; AddressU = CLAMP; AddressV = CLAMP; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; };
@@ -272,7 +270,7 @@ float2 PS_StoreAO(VSOUT input) : SV_Target
 float4 PS_ToDisplay(VSOUT input) : SV_Target
 {
     float depth = tex2D(sKernelNormals, input.uv).a;
-    float ao = ATrousFilter(sAO1, input.uv, 2).r; //stable AO mask (fades to 1.0)
+    float ao = ATrousFilter(sAO1Linear, input.uv, 2).r; //stable AO mask (fades to 1.0)
     if (DEBUG_VIEW) {
         #if BUFFER_COLOR_SPACE > 1
             return float4(ToOutputColorspace(ao.xxx, true), 1.0);
