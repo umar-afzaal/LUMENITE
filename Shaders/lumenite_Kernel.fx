@@ -652,9 +652,11 @@ float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targ
 float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     float2 flow = BilateralBlur(sLumaFlow8A, sCurrLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-    //kill sub-pixel flow noise
+    //kill sub-pixel noise
     float flowPixelMag = length(flow / BUFFER_PIXEL_SIZE);
-    flow *= smoothstep(0.2, 0.8, flowPixelMag);
+    float x = saturate(flowPixelMag);
+    float gate = saturate(1.0 - pow(1.0 - saturate(x - 0.2), 10.0)); //SNAP TO REALITY
+    flow *= gate;
     return flow;
 }
 
