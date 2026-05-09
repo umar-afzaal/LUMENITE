@@ -16,7 +16,7 @@
         Discord    : https://discord.gg/deXJrW2dx6
 
         Filename   : lumenite_SSSR.fx
-        Version    : 2026.04.11
+        Version    : 2026.05.09
         Author     : Afzaal (Kaidō)
         Description: Stochastic Screen Space Reflections.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -137,9 +137,6 @@ sampler sSpec2 { Texture = tSpec2; AddressU = CLAMP; AddressV = CLAMP; };
 texture tPrevSpec { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sPrevSpec { Texture = tPrevSpec; AddressU = CLAMP; AddressV = CLAMP; };
 
-texture tBlueNoise < source = "lumenite_bluenoise256.png"; > { Width = 256; Height = 256; Format = R8; };
-sampler sBlueNoise { Texture = tBlueNoise; AddressU = REPEAT; AddressV = REPEAT; };
-
 /*--------------.
 | :: HELPERS :: |
 '--------------*/
@@ -193,9 +190,9 @@ float3 CalculateBumpyNormal(float2 uv, float3 geoNormal)
     return normalize(tangent * bumpVec.x + bitangent * bumpVec.y + geoNormal * bumpVec.z);
 }
 
-/*--------------------.
-| :: PIXEL SHADERS :: |
-'--------------------*/
+/*--------------.
+| :: SHADERS :: |
+'--------------*/
 float4 PS_TraceSpecular(VSOUT input) : SV_Target
 {
     float4 gbuffer = tex2D(sKernelNormals, input.uv);
@@ -216,24 +213,13 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
     if (dot(mirrorDir, mirrorDir) < 0.001) { //mirror reflection validation chck
         return float4(0, 0, 0, 1);
     }
-
-    //keep spatial UV static to preserve blueness
-    float2 blueNoiseUV = input.vpos.xy / 256.0;
-    float bnRed = tex2Dlod(sBlueNoise, float4(blueNoiseUV, 0, 0)).r;
-    float bnGreen = tex2Dlod(sBlueNoise, float4(blueNoiseUV + 0.5, 0, 0)).r;
-
-    //for temporal dithering, animate noise w. golden ratios
-    float2 rand = float2(
-        frac(bnRed + float(FRAME_COUNT % 64) * 0.618033988),
-        frac(bnGreen + float(FRAME_COUNT % 64) * 0.754877666)
-    );
-
-    float3 jitterN = normalize(normal + float3((rand * 2.0 - 1.0) * ROUGHNESS * 0.2, 0.0));
+    float2 noise = GetStratifiedNoise(input.vpos.xy);
+    float3 jitterN = normalize(normal + float3((noise * 2.0 - 1.0) * ROUGHNESS * 0.2, 0.0));
     float3 rayDir = reflect(-viewDir, jitterN);
     if (dot(rayDir, normal) < 0.0) rayDir = mirrorDir; //prevent jitter from pushing ray inside the geometry
     float biasedOffset = RAY_ORIGIN_BIAS + (depth * RAY_ORIGIN_BIAS * 0.01); //intentional -ve origin bias
     float3 biasedStartPos = StartPos - (normal * biasedOffset); //deliberately pushes the ray slightly into the floor, makes it immediately collide with the floor's depth, killing "joined reflections"
-    float t = stepSize * rand.x;
+    float t = stepSize * noise.x;
     float3 spec = float3(0.0, 0.0, 0.0);
     bool hitFound = false;
     float distanceRatio = 0.0;
@@ -293,7 +279,7 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
                 }
             }
         }
-        t += stepSize * rand.y;
+        t += stepSize * noise.y;
     }
 
     if (hitFound) {
@@ -357,10 +343,10 @@ technique LUMENITE_SSSR <
     ui_tooltip = "Stochastic Screen Space Reflections.";
 >
 {
-    pass { VertexShader = VS; PixelShader = PS_TraceSpecular; RenderTarget = tSpec1;   }
-    pass { VertexShader = VS; PixelShader = PS_TemporalBlend; RenderTarget = tSpec2;   }
-    pass { VertexShader = VS; PixelShader = PS_ToDisplay;                              }
-    pass { VertexShader = VS; PixelShader = PS_StoreHistory; RenderTarget = tPrevSpec; }
+    pass { VertexShader = VS; PixelShader = PS_TraceSpecular; RenderTarget = tSpec1;    }
+    pass { VertexShader = VS; PixelShader = PS_TemporalBlend; RenderTarget = tSpec2;    }
+    pass { VertexShader = VS; PixelShader = PS_ToDisplay;                               }
+    pass { VertexShader = VS; PixelShader = PS_StoreHistory;  RenderTarget = tPrevSpec; }
 }
 
 }

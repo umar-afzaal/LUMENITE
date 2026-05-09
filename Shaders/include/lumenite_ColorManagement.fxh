@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_ColorManagement.fxh
-        Version    : 2026.04.25
+        Version    : 2026.05.05
         Author     : Afzaal (Kaidō)
         Description: Provides color management including color space detection,
                      color space transfers and tonemapping.
@@ -92,7 +92,7 @@
 /*-------------------------.
 | :: TRANSFER FUNCTIONS :: |
 '-------------------------*/
-//=== sRGB
+//sRGB
 float3 sRGBtoLinearAccurate(float3 r) {
     return (r <= 0.04045) ? (r / 12.92) : pow(abs(r + 0.055) / 1.055, 2.4);
 }
@@ -119,7 +119,7 @@ float3 linearToSRGB(float3 r) {
     else return linearToSRGBAccurate(r);
 }
 
-//=== PQ (ST.2084)
+//PQ (ST.2084)
 float3 PQtoLinearAccurate(float3 r) {
     const float m1 = 1305.0/8192.0;
     const float m2 = 2523.0/32.0;
@@ -172,7 +172,7 @@ float3 linearToPQ(float3 r) {
     else return linearToPQAccurate(r);
 }
 
-//=== HLG (Hybrid Log Gamma)
+//HLG (Hybrid Log Gamma)
 float3 linearToHLG(float3 r) {
     r = r * HDR_WHITELEVEL / 1000.0;
     const float a = 0.17883277;
@@ -190,7 +190,7 @@ float3 HLGtoLinear(float3 r) {
     return r * 1000.0 / HDR_WHITELEVEL;
 }
 
-//=== YCoCg
+//YCoCg
 float3 linearToYCoCg(float3 r) {
     float y  = (r.r + 2.0 * r.g + r.b) * 0.25;
     float co = (r.r - r.b) * 0.5;

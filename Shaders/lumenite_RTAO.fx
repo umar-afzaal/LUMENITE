@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_RTAO.fx
-        Version    : 2026.04.25
+        Version    : 2026.05.09
         Author     : Afzaal (Kaidō)
         Description: Ray Traced Ambient Occlusion.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -33,9 +33,6 @@
 #define INITIAL_STEP_SCALE 0.9
 #define STEP_GROWTH_FACTOR 1.2
 #define AO_MAX_MARCH_STEPS 15
-#define AO_RADIUS 0.02
-#define ATROUS_DEPTH_WEIGHT_SCALE 800.0
-#define ATROUS_NORMAL_WEIGHT_SCALE 13.0
 
 /*--------------.
 | :: HEADERS :: |
@@ -91,14 +88,14 @@ uniform float AO_INTENSITY <
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-//===optical flow
+//optical flow
 texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
 texture2D tFlowConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
 sampler2D sFlowConfidence { Texture = tFlowConfidence; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-//===surface normals
+//surface normals
 texture tKernelNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sKernelNormals { Texture = tKernelNormals; };
 
@@ -116,9 +113,6 @@ sampler sAO1Linear { Texture = tAO1; AddressU = CLAMP; AddressV = CLAMP; MagFilt
 
 texture tPrevAO { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = RG16F; };
 sampler sPrevAO { Texture = tPrevAO; AddressU = CLAMP; AddressV = CLAMP; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; };
-
-texture tBlueNoise < source = "lumenite_bluenoise256.png"; > { Width = 256; Height = 256; Format = RGBA8; };
-sampler sBlueNoise { Texture = tBlueNoise; AddressU = REPEAT; AddressV = REPEAT; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
 
 /*--------------.
 | :: HELPERS :: |
@@ -170,8 +164,8 @@ float2 ATrousFilter(sampler SourceSampler, float2 uv, int Dilation)
         float2 sampleUV    = uv + float2(x, y) * Dilation * (BUFFER_PIXEL_SIZE * 2.0); //don't forget the x2.0 to properly step half-res grid!
         float2 sampleData  = tex2Dlod(SourceSampler, float4(sampleUV, 0, 0)).rg;
         float4 sampleGeo   = tex2Dlod(sKernelNormals, float4(sampleUV, 0, 0));
-        float depthWeight  = exp(-abs(gbuffer.a - sampleGeo.a) * ATROUS_DEPTH_WEIGHT_SCALE);
-        float normalWeight = pow(saturate(dot(gbuffer.rgb, sampleGeo.rgb)), ATROUS_NORMAL_WEIGHT_SCALE);
+        float depthWeight   = exp(-abs(gbuffer.a - sampleGeo.a) / (gbuffer.a * 0.02 + 0.001));
+        float normalWeight = pow(saturate(dot(gbuffer.rgb, sampleGeo.rgb)), 50.0);
         float aoDiff       = centerData.r - sampleData.r;
         float aoWeight     = exp(-(aoDiff * aoDiff) / (variance + 0.0001));
         float weight       = depthWeight * normalWeight * aoWeight;
@@ -181,9 +175,9 @@ float2 ATrousFilter(sampler SourceSampler, float2 uv, int Dilation)
     return sum / (totalWeight + EPSILON);
 }
 
-/*--------------------.
-| :: PIXEL SHADERS :: |
-'--------------------*/
+/*--------------.
+| :: SHADERS :: |
+'--------------*/
 float PS_TraceAO(VSOUT input) : SV_Target
 {
     //deprecated
@@ -202,12 +196,10 @@ float PS_TraceAO(VSOUT input) : SV_Target
     float3 startPos = UVToViewSpace(input.uv, depth, input);
     float3 tangent, bitangent;
     BuildOrthonormalBasis(normal, tangent, bitangent);
-    float2 blueNoiseUV = input.vpos.xy / 256.0;
-    float3 blueNoise = tex2Dlod(sBlueNoise, float4(blueNoiseUV, 0, 0)).rgb;
-    float3 animatedNoise = frac(blueNoise + float(FRAME_COUNT % 64) * float3(0.618033988, 0.754877666, 0.5545381));
-    float3 rayDir = GenerateHemisphereDirection(normal, animatedNoise.xy, tangent, bitangent);
+    float2 noise = GetStratifiedNoise(input.vpos.xy);
+    float3 rayDir = GenerateHemisphereDirection(normal, noise, tangent, bitangent);
     float invDepth = rcp(depth);
-    float totalRayLength = AO_RADIUS * depth;
+    float totalRayLength = 0.02 * depth;
     float initialStepScale = INITIAL_STEP_SCALE * rcp((float)AO_MAX_MARCH_STEPS);
     float stepSize = totalRayLength * initialStepScale;
     float3 rayPos = mad(rayDir, stepSize * 0.5, startPos);
@@ -245,15 +237,15 @@ float2 PS_TemporalFilter(VSOUT input) : SV_Target
     float moment = ao * ao;
     float2 flow = tex2D(sLumaFlow, input.uv).xy;
     float confidence = tex2D(sFlowConfidence, input.uv).x;
-    confidence = saturate(confidence + log2(2.0 - confidence) * 0.5); //logarithmically boost confidence: compresses its range to allow a bit more blend
-    float2 rawHistory = tex2D(sPrevAO, input.uv + flow).rg; //history stores "1.0 - AO". 0.0 (Black Texture) -> Reads as 1.0 (White).
+    confidence = saturate(confidence + log2(2.0 - confidence) * 0.5); //boost confidence
+    float2 rawHistory = tex2D(sPrevAO, input.uv + flow).rg; //history stores "1.0 - AO". 0.0 (Black Texture) -> Reads as 1.0 (White)
     float prevAO = 1.0 - rawHistory.r;
     float prevMoment = 1.0 - rawHistory.g;
-    float blendVal = (rawHistory.r == 0.0) ? 0.0 : (confidence * 0.98);
-    ao = lerp(ao, prevAO, blendVal);
-    moment = lerp(moment, prevMoment, blendVal);
-    //max(..., 0.001) to ensure we NEVER write exactly 0.0 again.
-    //this tells the next frame "I contain data".
+    float alpha = confidence * 0.98;
+    ao = lerp(ao, prevAO, alpha);
+    moment = lerp(moment, prevMoment, alpha);
+    //max(..., 0.001) to ensure we NEVER write exactly 0.0 again
+    //this tells the next frame "I contain data"
     return float2(max(ao, 0.001), max(moment, 0.001));
 }
 

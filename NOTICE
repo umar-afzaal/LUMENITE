@@ -1,9 +1,8 @@
-This file notes the attributions and acknowledgments for the LumeniteFX project.
+This file notes the attributions and acknowledgments for the ReShade LumeniteFX project.
 
 [ACKNOWLEDGMENT]
-    For Lumenite's ReShade optical flow, pyramidal patch matching and optical flow
-    fundamentals were studied from the following sources. These sources inspired the
-    flow:
+    For Lumenite's dense optical flow, pyramidal patch matching and optical flow
+    fundamentals were studied from the following sources.
 
         1. AMD FidelityFX Optical Flow 1.1.2
            (https://gpuopen.com/manuals/fidelityfx_sdk/techniques/optical-flow/)
@@ -11,19 +10,18 @@ This file notes the attributions and acknowledgments for the LumeniteFX project.
         3. Video++ (VPP) library's optical flow sources
            (https://github.com/matt-42/vpp/tree/master/vpp/algorithms/optical_flow)
 
-    A few ideas were borrowed from Zenteon such as the use of sparse samples for patch
-    matching and that we can output a disocclusion estimate alongside each motion
-    vector. However, LumeniteFX's core flow technique is unique (based in continuous
-    uv-space, the specific use of previous frame flow and global motion direction, etc.
-    without which its quality noticeably lacks), and its code/detailed implementation
-    is original.
+    Also, a few ideas were borrowed from Zenteon such as the use of sparse samples for
+    patch matching and that we should provide a disocclusion score alongside each motion
+    vector. However, Lumenite's core flow technique is unique (based in continuous
+    UV-space which requires its own specialized math, the specific use of previous
+    frame flow and global motion direction, etc. without which its quality noticeably
+    lacks), and its code/detailed implementation is original.
 
 [ATTRIBUTION]
     The color space transfer functions and the ToOutputColorSpace() and the
     ToLinearColorSpace() helpers in "Shaders/include/LUMENITE_ColorManagement.fxh"
-    were derived from the Glamarye's Fast Effects for ReShade.
-
-    The license text is copied below:
+    were derived from the Glamarye's Fast Effects for ReShade. A copy of the MIT license
+    covering Glamarye's work is attached herewith.
         """
         MIT License
 
@@ -53,14 +51,11 @@ This file notes the attributions and acknowledgments for the LumeniteFX project.
       weights in AnamorphicBloom.fx were derived from "HDR bloom" by Anton Matrosov
       licensed under the MIT license. (https://www.linkedin.com/in/antonmatrosov/)
     - Project link: https://playcanvas.com/project/1091979
-    - Original research work by Jorge Jimenez & Alexander Christensen
 
 [ATTRIBUTION]
-    The BN texture "Textures/lumenite_bluenoise256.png" is courtesy of Alan Wolfe, and
-    obtained from the blog hosted at:
-    https://blog.demofox.org/2018/08/07/tiled-blue-noise/
-
-    The license text for all content of the blog is copied below:
+    The Blue Noise texture "Textures/lumenite_bluenoise256.png" is courtesy of Alan Wolfe,
+    and obtained from the blog hosted at: https://blog.demofox.org/2018/08/07/tiled-blue-noise/
+    A copy of the MIT license covering this blog’s content is attached herewith.
         """
         MIT License
 

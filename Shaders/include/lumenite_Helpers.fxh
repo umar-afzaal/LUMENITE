@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Helpers.fxh
-        Version    : 2026.04.19
+        Version    : 2026.05.09
         Author     : Afzaal (Kaidō)
         Description: Helper functions for Lumenite shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -34,13 +34,18 @@
 '------------------*/
 #define PI 3.14159265359
 #define EPSILON 1e-6
+//R2 sequence constants
+static const float PHI_2 = 1.324717957244746;
+static const float2 R2_CONSTANT = float2(1.0/PHI_2, 1.0/(PHI_2*PHI_2));
 
 /*--------------.
 | :: UNIFORMS ::|
 '--------------*/
-uniform float TIMER < source = "timer"; >;
-uniform float FRAME_TIME < source = "frametime"; >;
-uniform uint FRAME_COUNT < source = "framecount"; >;
+uniform float  TIMER       < source = "timer"; >; //ms since launch
+uniform float  FRAME_TIME  < source = "frametime"; >; //ms last frame
+uniform uint   FRAME_COUNT < source = "framecount"; >;
+uniform float2 MOUSE_POS   < source = "mousepoint";  >;  //in screen px
+uniform bool   MOUSE_DOWN  < source = "mousebutton"; min = 0; max = 0; >;
 
 /*--------------.
 | :: HELPERS :: |
@@ -60,4 +65,30 @@ float GetDepth(float2 uv)
 
 bool IsOOB(float2 uv) {
     return any(uv < 0.0) || any(uv > 1.0);
+}
+
+//QUASI-MONTE CARLO SEQUENCE
+//fast Hilbert curve math (a 1D index from 2D coords)
+uint HilbertIndex(uint x, uint y) {
+    uint index = 0;
+    [unroll] for (uint s = 64 / 2; s > 0; s /= 2) {
+        uint rx = (x & s) > 0;
+        uint ry = (y & s) > 0;
+        index += s * s * ((3 * rx) ^ ry);
+        if (ry == 0) {
+            if (rx == 1) {
+                x = 64 - 1 - x;
+                y = 64 - 1 - y;
+            }
+            uint t = x; x = y; y = t;
+        }
+    }
+    return index;
+}
+
+float2 GetStratifiedNoise(float2 vpos) {
+    uint2 screenPos = uint2(vpos.xy) % 64; //64x64 tiled pixel coords
+    uint hIndex = HilbertIndex(screenPos.x, screenPos.y); //Hilbert index (spatial)
+    uint totalIndex = hIndex + (uint(FRAME_COUNT % 64) * 288); //temporal offset: 288
+    return frac(float(totalIndex) * R2_CONSTANT);
 }

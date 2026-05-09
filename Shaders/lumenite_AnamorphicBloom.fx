@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_AnamorphicBloom.fx
-        Version    : 2026.04.11
+        Version    : 2026.05.09
         Author     : Afzaal (Kaidō)
         Description: Horizontally-stretched artistic bloom approximating the
                      Anamorphic lens aesthetic.
@@ -140,9 +140,9 @@ float3 TentFilter9Anisotropic(sampler2D src, float2 uv, float2 radius)
     return upsample;
 }
 
-/*--------------------.
-| :: PIXEL SHADERS :: |
-'--------------------*/
+/*--------------.
+| :: SHADERS :: |
+'--------------*/
 float4 PS_StoreUnpackedColor(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     return float4(GetLinearColor(uv, false), 1);
@@ -223,8 +223,7 @@ float4 PS_Upsample4(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     return float4(upsample + previous, 1);
 }
 
-//blend
-float4 PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float4 PS_ToDisplay(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     float3 unpackedColor = tex2D(sUnpackedColor, uv).rgb;
     float3 bloom = tex2D(sBloomUp4, uv).rgb;
@@ -261,7 +260,7 @@ technique Lumenite_AnamorphicBloom <
     pass { VertexShader = PostProcessVS; PixelShader = PS_Upsample0; RenderTarget = tBloomUp0; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_Upsample4; RenderTarget = tBloomUp4; }
 
-    pass { VertexShader = PostProcessVS; PixelShader = PS_Composite; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ToDisplay; }
 }
 
 }

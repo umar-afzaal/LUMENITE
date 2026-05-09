@@ -86,7 +86,7 @@ namespace LumeniteKernel {
 texture2D tCurrLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sCurrLuma { Texture = tCurrLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-#if _GPGPU_
+#if _COMPUTE_ENABLED_
     storage stCurrLuma { Texture = tCurrLuma; };
 #endif
 
@@ -408,7 +408,7 @@ float2 BilateralBlur(sampler2D motionSrc, sampler2D lumaSrc, float2 uv, float2 t
     static const float INV_SPATIAL_SIGMA_SQ = -0.5 / (SPATIAL_SIGMA * SPATIAL_SIGMA);
     static const float INV_LUMA_SIGMA_SQ = -0.5 / (LUMA_SIGMA * LUMA_SIGMA);
 
-    float2 centerFlow  = tex2Dlod(motionSrc, float4(uv, 0, 0)).xy;
+    //float2 centerFlow  = tex2Dlod(motionSrc, float4(uv, 0, 0)).xy;
     float  centerLuma  = tex2Dlod(lumaSrc, float4(uv, 0, mip)).r;
     float2 flowSum     = 0.0;
     float  weightSum   = 0.0;
@@ -441,7 +441,7 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
 {
     if(FRAME_COUNT == 0) return float2(0, 0);
 
-    float2 coarseTexelSize = rcp(tex2Dsize(coarseSrc, 0));
+    float2 coarseTexelSize = rcp(float2(tex2Dsize(coarseSrc, 0)));
     //pool candidates for tournament selection. order matters here
     float2 candidates[11];
     candidates[0]  = tex2D(coarseSrc, uv).xy ;
@@ -481,9 +481,9 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
     return (prediction+subpixelOffset*texelSize);
 }
 
-/*--------------------.
-| :: PIXEL SHADERS :: |
-'--------------------*/
+/*--------------.
+| :: SHADERS :: |
+'--------------*/
 static const int2 LUMA_OFFSETS[13] = {
                          int2(0,-2),
              int2(-1,-1),int2(0,-1),int2(1,-1),
@@ -501,61 +501,68 @@ static const float LUMA_WEIGHTS[13] = {
                 1               //(0,2)
 };
 
-#if _GPGPU_
-    #define LUMA_GS        16
-    #define LUMA_BORDER    2
-    #define LUMA_TILE      (LUMA_GS + LUMA_BORDER * 2)   //20×20 = 400 texels
+#if _COMPUTE_ENABLED_
 
-    groupshared float gs_cluma[LUMA_TILE * LUMA_TILE];    //400 floats = 1600 bytes LDS
+//thread group size
+#define LUMA_CS_W  16
+#define LUMA_CS_H  16   //16x16 = 256 threads/group — keep multiples of warp size (32)
+#define LUMA_BORDER 2
+#define LUMA_TILE   (LUMA_CS_W + LUMA_BORDER * 2)   //20×20 = 400 texels
 
-    void CS_CurrLuma(CSIN input)
+//groupshared memory
+groupshared float currLumaGS[LUMA_TILE * LUMA_TILE];    //400 floats = 1600 bytes LDS
+
+void CS_CurrLuma(CSInput input)
+{
+    //co-op tile load: 256 threads load 400 texels
+    int2 tileOrigin = int2(input.groupID.xy) * LUMA_CS_W - LUMA_BORDER; //tileOrigin is top-left pixel of this tile in screen space (can be -ve at borders)
+    [unroll] for(uint t = input.flatIndex; t < LUMA_TILE * LUMA_TILE; t += LUMA_CS_W * LUMA_CS_H) //max 2 iterations: ceil(400/256)
     {
-        //co-op tile load: 256 threads load 400 texels
-        int2 tileOrigin = int2(input.groupid.xy) * LUMA_GS - LUMA_BORDER; //tileOrigin is top-left pixel of this tile in screen space (can be -ve at borders)
-        [unroll] for(uint t = input.threadid; t < LUMA_TILE * LUMA_TILE; t += LUMA_GS * LUMA_GS) { //max 2 iterations: ceil(400/256)
-            int2   loadPx  = tileOrigin + int2(t % LUMA_TILE, t / LUMA_TILE);
-                   loadPx  = clamp(loadPx, 0, int2(BUFFER_WIDTH - 1, BUFFER_HEIGHT - 1));
-            float2 loadUV  = (float2(loadPx) + 0.5) * BUFFER_PIXEL_SIZE;
-            float3 color   = GetColor(loadUV);
-            float  luma    = dot(color, float3(0.2126, 0.7152, 0.0722));
-            gs_cluma[t]    = luma * rcp(1.0 + luma);       //reinhard done ONCE per texel, not per tap
-        }
-
-        barrier();
-
-        //OOB guard
-        uint2 outPx = input.groupid.xy * LUMA_GS + input.groupthreadid.xy;
-        if(outPx.x >= BUFFER_WIDTH || outPx.y >= BUFFER_HEIGHT) return;
-
-        //each thread accumulates its 13 taps from LDS
-        //this thread's center in tile space
-        int2  localCenter = int2(input.groupthreadid.xy) + LUMA_BORDER;
-        float lumaSum     = 0.0;
-
-        [unroll] for(int k = 0; k < 13; k++) {
-            int2 tilePos = localCenter + LUMA_OFFSETS[k];
-            lumaSum += gs_cluma[tilePos.y * LUMA_TILE + tilePos.x] * LUMA_WEIGHTS[k];
-        }
-
-        tex2Dstore(stCurrLuma, outPx, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const.
+        int2   loadPx  = tileOrigin + int2(t % LUMA_TILE, t / LUMA_TILE);
+               loadPx  = clamp(loadPx, 0, int2(BUFFER_WIDTH - 1, BUFFER_HEIGHT - 1));
+        float2 loadUV  = (float2(loadPx) + 0.5) * BUFFER_PIXEL_SIZE;
+        float3 color   = GetColor(loadUV);
+        float  luma    = dot(color, float3(0.2126, 0.7152, 0.0722));
+        currLumaGS[t]     = luma * rcp(1.0 + luma);       //reinhard done ONCE per texel, not per tap
     }
+
+    barrier();
+
+    //OOB guard
+    if(any(input.dispatchID.xy >= uint2(BUFFER_WIDTH, BUFFER_HEIGHT))) return;
+
+    //each thread accumulates its 13 taps from LDS
+    int2  localCenter = int2(input.localID.xy) + LUMA_BORDER; //this thread's center in tile space
+    float lumaSum     = 0.0;
+
+    //our work
+    [unroll] for(int k = 0; k < 13; k++) {
+        int2 tilePos = localCenter + LUMA_OFFSETS[k];
+        lumaSum += currLumaGS[tilePos.y * LUMA_TILE + tilePos.x] * LUMA_WEIGHTS[k];
+    }
+
+    tex2Dstore(stCurrLuma, input.dispatchID.xy, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const.
+}
+
 #else
-    float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
-    {
-        float lumaSum = 0.0;
-        float weightSum = 0.0;
-        [unroll] for(int i = 0; i < 13; i++) {
-            float2 sampleUV = uv + float2(LUMA_OFFSETS[i]) * BUFFER_PIXEL_SIZE;
-            float3 color = GetColor(sampleUV);
-            float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
-            luma = luma * rcp(1.0 + luma); //reinhard compression for HDR stability
-            float weight = LUMA_WEIGHTS[i];
-            lumaSum += luma * weight;
-            weightSum += weight;
-        }
-        return lumaSum / weightSum;
+
+float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    float lumaSum = 0.0;
+    float weightSum = 0.0;
+    [unroll] for(int i = 0; i < 13; i++) {
+        float2 sampleUV = uv + float2(LUMA_OFFSETS[i]) * BUFFER_PIXEL_SIZE;
+        float3 color = GetColor(sampleUV);
+        float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
+        luma = luma * rcp(1.0 + luma); //reinhard compression for HDR stability
+        float weight = LUMA_WEIGHTS[i];
+        lumaSum += luma * weight;
+        weightSum += weight;
     }
-#endif //_GPGPU_
+    return lumaSum / weightSum;
+}
+
+#endif //_COMPUTE_ENABLED_
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -654,10 +661,8 @@ float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     float2 flow = BilateralBlur(sLumaFlow8A, sCurrLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
     //kill sub-pixel noise
     float flowPixelMag = length(flow / BUFFER_PIXEL_SIZE);
-    float x = saturate(flowPixelMag);
-    float gate = saturate(1.0 - pow(1.0 - saturate(x - 0.2), 10.0)); //SNAP TO REALITY
-    flow *= gate;
-    return flow;
+    float gate = saturate(1.0 - pow(1.0 - saturate(saturate(flowPixelMag) - 0.2), 10.0)); //SNAP TO REALITY
+    return flow*gate;
 }
 
 float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -691,6 +696,7 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
     float patternConf = 1.0 - saturate(abs(sqrt(varCurr) - sqrt(varPrev)) / (sqrt(varCurr) + 0.01));
 
     //look at neighborhood flow for spatial consistency
+    float flowMagnitude = length(flow);
     float2 flowTexelSize = BUFFER_PIXEL_SIZE * 8.0;
     float2 flowN = tex2Dlod(sLumaFlow, float4(uv + float2(0, -flowTexelSize.y), 0, 0)).xy;
     float2 flowS = tex2Dlod(sLumaFlow, float4(uv + float2(0,  flowTexelSize.y), 0, 0)).xy;
@@ -698,13 +704,14 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
     float2 flowW = tex2Dlod(sLumaFlow, float4(uv + float2(-flowTexelSize.x, 0), 0, 0)).xy;
     float2 avgNeighborFlow = (flowN + flowS + flowE + flowW) * 0.25;
     float spatialDiff = distance(flow, avgNeighborFlow);
-    float spatialThreshold = length(flow) * 0.5 + BUFFER_PIXEL_SIZE.x;
+    float spatialThreshold = flowMagnitude * 0.5 + BUFFER_PIXEL_SIZE.x;
     float spatialConfidence = saturate(1.0 - (spatialDiff / (spatialThreshold + EPSILON)));
 
     //motion length penalty
     float subpixelThreshold = length(BUFFER_PIXEL_SIZE);
-    float flowMagnitude = length(flow);
     float lengthConfidence = (flowMagnitude <= subpixelThreshold) ? 1.0 : rcp((flowMagnitude / subpixelThreshold) * 0.05 + 1.0);
+    //float panThreshold = BUFFER_PIXEL_SIZE.x * 30.0;
+    //float lengthConfidence = (flowMagnitude <= panThreshold) ? 1.0 : rcp(((flowMagnitude - panThreshold) / panThreshold) * 0.1 + 1.0);
 
     //photometric confidence - use spatial/pattern trust to decide how much to care about the luma error
     float strictness = lengthConfidence * spatialConfidence * patternConf;
@@ -808,12 +815,12 @@ technique Lumenite_Kernel <
 >
 {
     //optical flow
-#if _GPGPU_
+#if _COMPUTE_ENABLED_
     pass
     {
-        ComputeShader  = CS_CurrLuma<LUMA_GS, LUMA_GS>;
-        DispatchSizeX  = (BUFFER_WIDTH  + LUMA_GS - 1) / LUMA_GS;
-        DispatchSizeY  = (BUFFER_HEIGHT + LUMA_GS - 1) / LUMA_GS;
+        ComputeShader = CS_CurrLuma<LUMA_CS_W, LUMA_CS_H>;
+        DispatchSizeX = (BUFFER_WIDTH  + LUMA_CS_W - 1) / LUMA_CS_W;
+        DispatchSizeY = (BUFFER_HEIGHT + LUMA_CS_H - 1) / LUMA_CS_H;
     }
 #else
     pass { VertexShader = PostProcessVS; PixelShader = PS_CurrLuma;          RenderTarget = tCurrLuma;       }

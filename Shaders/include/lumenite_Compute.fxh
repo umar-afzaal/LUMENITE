@@ -17,9 +17,9 @@
 
 
         Filename   : lumenite_Compute.fxh
-        Version    : 2026.04.19
+        Version    : 2026.05.09
         Author     : Afzaal (Kaidō)
-        Description: Helpers for compute enabled platforms.
+        Description: Header file for supporting compute enabled platforms.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
 
         ========================================================================
@@ -40,15 +40,15 @@
 #define VULKAN 0x20000
 
 #if __RENDERER__ >= D3D11
- #define _GPGPU_ 1
+    #define _COMPUTE_ENABLED_ 1
 #else
- #define _GPGPU_ 0
+    #define _COMPUTE_ENABLED_ 0
 #endif
 
-struct CSIN
+struct CSInput
 {
-    uint3 groupthreadid  : SV_GroupThreadID;
-    uint3 groupid        : SV_GroupID;
-    uint3 dispatchid     : SV_DispatchThreadID;
-    uint  threadid       : SV_GroupIndex;
+    uint3 dispatchID : SV_DispatchThreadID; //global pixel coord  (x, y, 0)
+    uint3 groupID    : SV_GroupID;          //which tile/group in grid
+    uint3 localID    : SV_GroupThreadID;    //thread inside group [0..CS_W-1]
+    uint  flatIndex  : SV_GroupIndex;       //localID flattened: y*CS_W + x
 };
