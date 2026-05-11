@@ -252,10 +252,9 @@ float PS_TraceAO(VSOUT input) : SV_Target
         else             HiZDepth = tex2Dlod(sHiZMip0, float4(hitPos,0,0)).r;
 
         //skip some empty space
-        float depthScale = lerp(0.3, 1.5, saturate(currentPos.z / DEPTH_BOUNDARY));
-        stepSize = baseStepSize * max(1.0, float(mip) * 0.5) * depthScale; //depth-biased step scaling: smaller steps near camera
-        if (currentPos.z < HiZDepth && (HiZDepth - currentPos.z) > stepSize) {
-            float leap = (HiZDepth - currentPos.z) * 0.1;
+        float currentStepSize = stepSize * max(1.0, float(mip) * 0.5); //stepsize mip scaling
+        if (currentPos.z < HiZDepth && (HiZDepth - currentPos.z) > currentStepSize) {
+            float leap = max(currentStepSize, (HiZDepth - currentPos.z) * 0.065);
             currentPos += rayDir * leap;
             t += leap;
             continue;
@@ -264,17 +263,14 @@ float PS_TraceAO(VSOUT input) : SV_Target
         //hit test
         float sceneDepth = ReShade::GetLinearizedDepth(hitPos);
         float depthDiff = currentPos.z - sceneDepth;
-
-        if (depthDiff > (currentPos.z * 0.005) && depthDiff < (currentPos.z * 0.2)) {
+        float maxThickness = currentPos.z * 0.6;
+        if (depthDiff > (currentPos.z * 0.0001) && depthDiff < maxThickness) {
             float3 scenePos = UVToViewSpace(hitPos, sceneDepth, input);
             float hitDistance = length(scenePos - startPos);
             float normalizedDist = hitDistance / totalRayLength;
-            occlusion = saturate(1.0 - normalizedDist);
+            occlusion = 1.0 - saturate(depthDiff / maxThickness);
             occlusion = occlusion * occlusion;
-            //contact bias: darken very close hits
-            float proximity = 1.0 - normalizedDist;
-            float contactBias = proximity * proximity;
-            occlusion *= (1.0 + contactBias * 0.5);
+            occlusion = saturate(pow(saturate(1.0 - normalizedDist), 1.2) * occlusion * 1.4);
             break;
         }
 
