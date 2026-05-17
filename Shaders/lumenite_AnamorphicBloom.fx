@@ -62,7 +62,7 @@
 
     uniform bool BLOOM_SHARP <
         ui_type = "radio";
-        ui_label = "Add More Definition to Bloom (Experimental)";
+        ui_label = "Add More Definition to Bloom Shape (Experimental)";
         ui_tooltip = "Enables a sharper 1D horizontal kernel. May flicker with camera movement.";
         ui_category = "Anamorphic Bloom";
     > = false;
@@ -93,7 +93,7 @@
 
     #if COLOR_FRINGING
         uniform float BLOOM_CA <
-            ui_type = "slider";
+            ui_type = "drag";
             ui_min = 0.0; ui_max = 10.0; ui_step = 0.01;
             ui_label = "Bloom Chromatic Shift";
             ui_tooltip = "Shifts R/B channels within the bloom passes.";
@@ -143,7 +143,7 @@
 
     #if COLOR_FRINGING
         uniform float STREAK_CA <
-            ui_type = "slider";
+            ui_type = "drag";
             ui_min = 0.0; ui_max = 10.0; ui_step = 0.01;
             ui_label = "Streak Chromatic Shift";
             ui_tooltip = "Shifts R/B channels of the light streaks.";
