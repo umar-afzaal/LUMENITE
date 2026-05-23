@@ -150,10 +150,12 @@ float CalculateDepthFade(float depth)
     return 1.0 - saturate((depth - fadeStartDepth) / fadeRange);
 }
 
-float2 ATrousFilter(sampler SourceSampler, float2 uv, int Dilation)
+float2 ATrousFilter(sampler SourceSampler, float2 uv, uint dilation)
 {
     float4 gbuffer = tex2D(sKernelNormals, uv);
     if (gbuffer.a == 0 || gbuffer.a >= DEPTH_BOUNDARY) return float2(1.0, 0.0);
+    float confidence = tex2Dlod(sFlowConfidence, float4(uv, 0, 0)).r;
+    dilation += uint(round((1.0 - confidence))); //scale filter radius with motion
     float2 centerData = tex2Dlod(SourceSampler, float4(uv, 0, 0)).rg;
     float variance = max(0.0, centerData.g - (centerData.r * centerData.r)); //Moment - AO^2
     variance = max(variance, 0.0001);
@@ -161,7 +163,7 @@ float2 ATrousFilter(sampler SourceSampler, float2 uv, int Dilation)
     float totalWeight = 1.0;
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
         if (x == 0 && y == 0) continue;
-        float2 sampleUV    = uv + float2(x, y) * Dilation * (BUFFER_PIXEL_SIZE * 2.0); //don't forget the x2.0 to properly step half-res grid!
+        float2 sampleUV    = uv + float2(x, y) * dilation * (BUFFER_PIXEL_SIZE * 2.0); //don't forget the x2.0 to properly step half-res grid!
         float2 sampleData  = tex2Dlod(SourceSampler, float4(sampleUV, 0, 0)).rg;
         float4 sampleGeo   = tex2Dlod(sKernelNormals, float4(sampleUV, 0, 0));
         float depthWeight   = exp(-abs(gbuffer.a - sampleGeo.a) / (gbuffer.a * 0.02 + 0.001));
@@ -237,7 +239,7 @@ float2 PS_TemporalFilter(VSOUT input) : SV_Target
     float moment = ao * ao;
     float2 flow = tex2D(sLumaFlow, input.uv).xy;
     float confidence = tex2D(sFlowConfidence, input.uv).x;
-    confidence = saturate(confidence + log2(2.0 - confidence) * 0.5); //boost confidence
+    confidence = saturate(confidence + log2(2.0 - confidence) * 0.6); //boost confidence
     float2 rawHistory = tex2D(sPrevAO, input.uv + flow).rg; //history stores "1.0 - AO". 0.0 (Black Texture) -> Reads as 1.0 (White)
     float prevAO = 1.0 - rawHistory.r;
     float prevMoment = 1.0 - rawHistory.g;

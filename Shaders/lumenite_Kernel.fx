@@ -673,37 +673,24 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
     float2 prevUV = uv + flow; //warp prev frame forward
     if(IsOOB(prevUV)) return 0.0;
 
-    float currLuma = tex2Dlod(sCurrLuma, float4(uv, 0, 0)).r; //full res sharp luma feature for photometric err.
-    float prevLuma = tex2Dlod(sPrevLuma, float4(prevUV, 0, 0)).r;
+    //photometric error
+    //mip 2 luma acts as a low-pass filter & should reduce sub-pixel noise
+    float currLuma = tex2Dlod(sCurrLuma, float4(uv, 0, 2)).r;
+    float prevLuma = tex2Dlod(sPrevLuma, float4(prevUV, 0, 2)).r;
     float lumaError = abs(currLuma - prevLuma);
 
-    //looks at the local contrast for pattern confidence
-    float sumX = 0, sumX2 = 0, sumY = 0, sumY2 = 0;
-    float2 lumaTexSize = BUFFER_PIXEL_SIZE * 4.0;
-    static const float2 offsets[5] = {
-                      float2(0, 1),
-        float2(-1,0), float2(0, 0), float2(1,0),
-                      float2(0,-1)
-    };
-    [unroll] for(int i = 0; i < 5; i++) {
-        float valCurr = tex2Dlod(sCurrLuma, float4(uv + offsets[i] * lumaTexSize, 0, 2)).r;
-        float valPrev = tex2Dlod(sPrevLuma, float4(prevUV + offsets[i] * lumaTexSize, 0, 2)).r;
-        sumX += valCurr; sumX2 += valCurr * valCurr;
-        sumY += valPrev; sumY2 += valPrev * valPrev;
-    }
-    float varCurr = max(0.0, (sumX2 / 5.0) - (sumX / 5.0 * sumX / 5.0));
-    float varPrev = max(0.0, (sumY2 / 5.0) - (sumY / 5.0 * sumY / 5.0));
-    float patternConf = 1.0 - saturate(abs(sqrt(varCurr) - sqrt(varPrev)) / (sqrt(varCurr) + 0.01));
+    //pattern confidence
+    float2 gradCurr = float2(ddx(currLuma), ddy(currLuma));
+    float2 gradPrev = float2(ddx(prevLuma), ddy(prevLuma));
+    float magCurr = length(gradCurr);
+    float magPrev = length(gradPrev);
+    float patternConf = 1.0 - saturate(abs(magCurr - magPrev) / (magCurr + 0.01)); //we compare structural gradients
 
-    //look at neighborhood flow for spatial consistency
+    //spatial confidence using flow Jacobian/divergence
+    float2 dFdx = ddx(flow);
+    float2 dFdy = ddy(flow);
+    float spatialDiff = length(dFdx) + length(dFdy); //high change in flow indicates edge of a moving object
     float flowMagnitude = length(flow);
-    float2 flowTexelSize = BUFFER_PIXEL_SIZE * 8.0;
-    float2 flowN = tex2Dlod(sLumaFlow, float4(uv + float2(0, -flowTexelSize.y), 0, 0)).xy;
-    float2 flowS = tex2Dlod(sLumaFlow, float4(uv + float2(0,  flowTexelSize.y), 0, 0)).xy;
-    float2 flowE = tex2Dlod(sLumaFlow, float4(uv + float2( flowTexelSize.x, 0), 0, 0)).xy;
-    float2 flowW = tex2Dlod(sLumaFlow, float4(uv + float2(-flowTexelSize.x, 0), 0, 0)).xy;
-    float2 avgNeighborFlow = (flowN + flowS + flowE + flowW) * 0.25;
-    float spatialDiff = distance(flow, avgNeighborFlow);
     float spatialThreshold = flowMagnitude * 0.5 + BUFFER_PIXEL_SIZE.x;
     float spatialConfidence = saturate(1.0 - (spatialDiff / (spatialThreshold + EPSILON)));
 
@@ -713,15 +700,12 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
     //float panThreshold = BUFFER_PIXEL_SIZE.x * 30.0;
     //float lengthConfidence = (flowMagnitude <= panThreshold) ? 1.0 : rcp(((flowMagnitude - panThreshold) / panThreshold) * 0.1 + 1.0);
 
-    //photometric confidence - use spatial/pattern trust to decide how much to care about the luma error
+    //photometric confidence: use spatial/pattern trust to decide how much to care about the luma error
     float strictness = lengthConfidence * spatialConfidence * patternConf;
     float photometricConfidence = exp(-lumaError * 12.0 * strictness);
 
-    //current frame final confidence
-    float currentConf = photometricConfidence * spatialConfidence * lengthConfidence * patternConf;
-
-    //stability filter/temporal hysteresis
-    float historyConf = tex2D(sPrevConfidence, prevUV).r;
+    float currentConf = photometricConfidence * spatialConfidence * lengthConfidence * patternConf; //current frame final confidence
+    float historyConf = tex2D(sPrevConfidence, prevUV).r; //temporal filter
 
     return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable while a high alpha (e.g 0.5) makes it react to changes quickly
 }
