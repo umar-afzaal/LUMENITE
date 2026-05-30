@@ -89,6 +89,6 @@ uint HilbertIndex(uint x, uint y) {
 float2 GetStratifiedNoise(float2 vpos) {
     uint2 screenPos = uint2(vpos.xy) % 64; //64x64 tiled pixel coords
     uint hIndex = HilbertIndex(screenPos.x, screenPos.y); //Hilbert index (spatial)
-    uint totalIndex = hIndex + (uint(FRAME_COUNT % 64) * 288); //temporal offset: 288
+    uint totalIndex = hIndex + (uint(FRAME_COUNT % 64) * 288); //temporal offset: 288 (same as Intel XeGTAO implementation)
     return frac(float(totalIndex) * R2_CONSTANT);
 }

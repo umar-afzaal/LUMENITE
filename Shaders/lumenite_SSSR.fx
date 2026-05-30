@@ -113,15 +113,19 @@ uniform float TAIL_FEATHERING <
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-//from Kernel
-texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+namespace Kernel {
+    texture2D tFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+    sampler2D sFlow { Texture = tFlow; MagFilter = POINT; MinFilter = POINT; };
 
-texture2D tFlowConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
-sampler2D sFlowConfidence { Texture = tFlowConfidence; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+    texture2D tConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
+    sampler2D sConfidence { Texture = tConfidence; };
 
-texture tKernelNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sKernelNormals { Texture = tKernelNormals; };
+    texture tNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
+    sampler sNormals { Texture = tNormals; };
+
+    texture2D tDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 4; };
+    sampler2D sDepth { Texture = tDepth; };
+}
 
 namespace LumeniteSSSR {
 
@@ -195,13 +199,13 @@ float3 CalculateBumpyNormal(float2 uv, float3 geoNormal)
 '--------------*/
 float4 PS_TraceSpecular(VSOUT input) : SV_Target
 {
-    float4 gbuffer = tex2D(sKernelNormals, input.uv);
+    float4 gbuffer = tex2D(Kernel::sNormals, input.uv);
     float3 normal = gbuffer.rgb;
     float depth = gbuffer.a;
     if (depth <= 0.0 || depth > DEPTH_BOUNDARY) return float4(0, 0, 0, 1);
 
     //process normals
-    normal = CalculateSmoothNormal(input.uv, gbuffer, 3, sKernelNormals);
+    normal = CalculateSmoothNormal(input.uv, gbuffer, 3, Kernel::sNormals);
     if (BUMP_SCALE > 0.0)
         normal = CalculateBumpyNormal(input.uv, normal);
 
@@ -236,7 +240,7 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
         if (IsOOB(hitUV))
             break;
 
-        float sceneDepth = ReShade::GetLinearizedDepth(hitUV);
+        float sceneDepth = tex2Dlod(Kernel::sDepth, float4(hitUV, 0, 0)).r;
         if (sceneDepth > DEPTH_BOUNDARY) {
             t += stepSize;
             continue;
@@ -265,7 +269,7 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
                     binarySearchT += (binarySearchCurrentPos.z > binarySearchScenePos.z) ? -binarySearchStep : binarySearchStep; //move backwards if behind the surface, otherwise forwards
                     binarySearchCurrentPos = biasedStartPos + rayDir * binarySearchT;
                     binarySearchUV = ViewSpaceToUV(binarySearchCurrentPos, input);
-                    float binarySearchSceneDepth = ReShade::GetLinearizedDepth(binarySearchUV);
+                    float binarySearchSceneDepth = tex2Dlod(Kernel::sDepth, float4(binarySearchUV, 0, 0)).r;
                     binarySearchScenePos = UVToViewSpace(binarySearchUV, binarySearchSceneDepth, input);
                 }
 
@@ -296,11 +300,11 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
 
 float4 PS_TemporalBlend(VSOUT input) : SV_Target
 {
-    float depth = tex2D(sKernelNormals, input.uv).a;
+    float depth = tex2D(Kernel::sDepth, input.uv).r;
     if (depth >= DEPTH_BOUNDARY) return float4(0, 0, 0, 0);
     float3 spec = tex2D(sSpec1, input.uv).rgb;
-    float2 flow = tex2D(sLumaFlow, input.uv).xy;
-    float confidence = tex2D(sFlowConfidence, input.uv).x;
+    float2 flow = tex2D(Kernel::sFlow, input.uv).xy;
+    float confidence = tex2D(Kernel::sConfidence, input.uv).x;
     confidence = saturate(confidence + log2(2.0 - confidence) * 0.5);
     float3 prevSpec = tex2D(sPrevSpec, input.uv + flow).rgb;
     float historyMax = max(prevSpec.r, max(prevSpec.g, prevSpec.b));
@@ -311,7 +315,7 @@ float4 PS_TemporalBlend(VSOUT input) : SV_Target
 
 float4 PS_StoreHistory(VSOUT input) : SV_Target
 {
-    float depth = tex2D(sKernelNormals, input.uv).a;
+    float depth = tex2D(Kernel::sDepth, input.uv).r;
     if (depth >= DEPTH_BOUNDARY) return float4(0, 0, 0, 0); //if past boundary, store 0.0 to 'clear' history for next frame
     return float4(max(tex2D(sSpec2, input.uv).rgb, 0.0001), 1.0); //clamp to 0.0001 so it knows 'valid hist data', prevents shimmer at depth boundary edges
 }
@@ -319,7 +323,7 @@ float4 PS_StoreHistory(VSOUT input) : SV_Target
 float4 PS_ToDisplay(VSOUT input) : SV_Target
 {
     float3 base = GetLinearColor(input.uv, false);
-    float4 gbuffer = tex2D(sKernelNormals, input.uv);
+    float4 gbuffer = tex2D(Kernel::sNormals, input.uv);
     float3 normal = gbuffer.rgb;
     float depth = gbuffer.a;
     float3 surfacePos = UVToViewSpace(input.uv, depth, input);

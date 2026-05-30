@@ -35,10 +35,6 @@
     #define DEBUG_KERNEL 0
 #endif
 
-#ifndef RENDER_QUALITY
-    #define RENDER_QUALITY 0
-#endif
-
 /*--------------.
 | :: HEADERS :: |
 '--------------*/
@@ -64,60 +60,53 @@ uniform int DEBUG_VIEW <
 > = 0;
 #endif
 
-/*-------------.
-| :: EXPORT :: |
-'-------------*/
-//optical flow
-texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; };
-
-texture2D tFlowConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
-sampler2D sFlowConfidence { Texture = tFlowConfidence; MagFilter = POINT; MinFilter = POINT; };
-
-//surface normals
-texture tKernelNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sKernelNormals { Texture = tKernelNormals; };
-
-namespace LumeniteKernel {
+namespace Kernel {
 
 /*---------------------.
 | :: RENDER TARGETS :: |
 '---------------------*/
+
+texture2D tFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+sampler2D sFlow { Texture = tFlow; MagFilter = POINT; MinFilter = POINT; };
+
+texture2D tConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
+sampler2D sConfidence { Texture = tConfidence; };
+
+texture tNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
+sampler sNormals { Texture = tNormals; };
+
+texture2D tDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 4; };
+sampler2D sDepth { Texture = tDepth; };
+
 texture2D tCurrLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sCurrLuma { Texture = tCurrLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-
-#if _COMPUTE_ENABLED_
-    storage stCurrLuma { Texture = tCurrLuma; };
-#endif
 
 texture2D tPrevLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sPrevLuma { Texture = tPrevLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow128 { Width = BUFFER_WIDTH/128; Height = BUFFER_HEIGHT/128; Format = RG16F; };
-sampler2D sLumaFlow128 { Texture = tLumaFlow128; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tChroma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RG16F; MipLevels = 4; };
+sampler2D sChroma { Texture = tChroma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow64A { Width = BUFFER_WIDTH/64; Height = BUFFER_HEIGHT/64; Format = RG16F; };
-sampler2D sLumaFlow64A { Texture = tLumaFlow64A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-texture2D tLumaFlow64B { Width = BUFFER_WIDTH/64; Height = BUFFER_HEIGHT/64; Format = RG16F; };
-sampler2D sLumaFlow64B { Texture = tLumaFlow64B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow128 { Width = BUFFER_WIDTH/128; Height = BUFFER_HEIGHT/128; Format = RG16F; };
+sampler2D sFlow128 { Texture = tFlow128; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow32A { Width = BUFFER_WIDTH/32; Height = BUFFER_HEIGHT/32; Format = RG16F; };
-sampler2D sLumaFlow32A { Texture = tLumaFlow32A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-texture2D tLumaFlow32B { Width = BUFFER_WIDTH/32; Height = BUFFER_HEIGHT/32; Format = RG16F; };
-sampler2D sLumaFlow32B { Texture = tLumaFlow32B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow64A { Width = BUFFER_WIDTH/64; Height = BUFFER_HEIGHT/64; Format = RG16F; };
+sampler2D sFlow64A { Texture = tFlow64A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow64B { Width = BUFFER_WIDTH/64; Height = BUFFER_HEIGHT/64; Format = RG16F; };
+sampler2D sFlow64B { Texture = tFlow64B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow16A { Width = BUFFER_WIDTH/16; Height = BUFFER_HEIGHT/16; Format = RG16F; };
-sampler2D sLumaFlow16A { Texture = tLumaFlow16A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-texture2D tLumaFlow16B { Width = BUFFER_WIDTH/16; Height = BUFFER_HEIGHT/16; Format = RG16F; };
-sampler2D sLumaFlow16B { Texture = tLumaFlow16B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow32A { Width = BUFFER_WIDTH/32; Height = BUFFER_HEIGHT/32; Format = RG16F; };
+sampler2D sFlow32A { Texture = tFlow32A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow32B { Width = BUFFER_WIDTH/32; Height = BUFFER_HEIGHT/32; Format = RG16F; };
+sampler2D sFlow32B { Texture = tFlow32B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-texture2D tLumaFlow8A { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-sampler2D sLumaFlow8A { Texture = tLumaFlow8A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow16A { Width = BUFFER_WIDTH/16; Height = BUFFER_HEIGHT/16; Format = RG16F; };
+sampler2D sFlow16A { Texture = tFlow16A; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+texture2D tFlow16B { Width = BUFFER_WIDTH/16; Height = BUFFER_HEIGHT/16; Format = RG16F; };
+sampler2D sFlow16B { Texture = tFlow16B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
-#if RENDER_QUALITY
-    texture2D tLumaFlow8B { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-    sampler2D sLumaFlow8B { Texture = tLumaFlow8B; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-#endif
+texture2D tFlow8 { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+sampler2D sFlow8 { Texture = tFlow8; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
 texture2D tPrevFrameFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
 sampler2D sPrevFrameFlow { Texture = tPrevFrameFlow; MagFilter = POINT; MinFilter = POINT; };
@@ -133,83 +122,29 @@ float3 GetColor(float2 uv)
     return tex2Dlod(ReShade::BackBuffer, float4(uv, 0, 0)).rgb;
 }
 
-float3 DepthColorMap(float t)
+float3 DepthGradient(float t, float2 uv)
 {
-    //white → yellow/orange → red → dark purple
-    t = saturate(1.0 - t);  //close=bright, far=dark
-    const float3 c0 = float3(0.050383, 0.029803, 0.527975);
-    const float3 c1 = float3(0.196881, 0.018803, 0.590027);
-    const float3 c2 = float3(0.314956, 0.017695, 0.604805);
-    const float3 c3 = float3(0.429345, 0.047208, 0.576190);
-    const float3 c4 = float3(0.535574, 0.101812, 0.508287);
-    const float3 c5 = float3(0.639213, 0.169051, 0.417812);
-    const float3 c6 = float3(0.741388, 0.247236, 0.317808);
-    const float3 c7 = float3(0.838008, 0.343882, 0.215553);
-    const float3 c8 = float3(0.924797, 0.462077, 0.136061);
-    const float3 c9 = float3(0.987622, 0.617099, 0.104282);
-    const float3 c10 = float3(0.940015, 0.975158, 0.131326);
-    float3 color;
-    if (t < 0.999) {
-        float t10 = t * 10.0;
-        int idx = clamp(int(t10), 0, 9);
-        float fracT = frac(t10);
-        if      (idx == 0) color = lerp(c0, c1,  fracT);
-        else if (idx == 1) color = lerp(c1, c2,  fracT);
-        else if (idx == 2) color = lerp(c2, c3,  fracT);
-        else if (idx == 3) color = lerp(c3, c4,  fracT);
-        else if (idx == 4) color = lerp(c4, c5,  fracT);
-        else if (idx == 5) color = lerp(c5, c6,  fracT);
-        else if (idx == 6) color = lerp(c6, c7,  fracT);
-        else if (idx == 7) color = lerp(c7, c8,  fracT);
-        else if (idx == 8) color = lerp(c8, c9,  fracT);
-        else               color = lerp(c9, c10, fracT);
-    } else {
-        float whiteProgress = (t - 0.999) / 0.001;
-        color = lerp(c10, float3(1.0, 1.0, 1.0), whiteProgress);
-    }
-    return color;
+    //grayscale: close=dark, far=bright
+    float3 depth = saturate(t).xxx;
+    const float ditherBit = 8.0;
+    float gridPos = frac(dot(uv, (BUFFER_SCREEN_SIZE * float2(1.0 / 16.0, 10.0 / 36.0)) + 0.25));
+    float ditherShift = 0.25 * (1.0 / (pow(2.0, ditherBit) - 1.0));
+    float3 ditherShiftRGB = float3(ditherShift, -ditherShift, ditherShift); //subpixel dithering
+    ditherShiftRGB = lerp(2.0 * ditherShiftRGB, -2.0 * ditherShiftRGB, gridPos);
+    return depth + ditherShiftRGB;
 }
 
-// float3 MotionToColor(float2 motion)
-// {
-//     float angle = atan2(-motion.y, -motion.x) / 6.283 + 0.5;
-//     float rawLength = length(motion) / (15.0 * ReShade::PixelSize.x);
-//     float compressed = rawLength / (1.0 + rawLength * 1.4);  //asymptotic squash
-//     float boosted = pow(compressed, 0.5);  //lift shadows
-//     float magnitude = saturate(lerp(compressed, boosted, saturate(rawLength * 3.0)));
-//     float3 hsv = float3(angle, 1, magnitude);
-//     float4 K = float4(1, 2/3.0, 1/3.0, 3);
-//     float3 p = abs(frac(hsv.xxx + K.xyz) * 6 - K.www);
-//     return hsv.z * lerp(K.xxx, clamp(p - K.xxx, 0, 1), hsv.y) + 0.1;
-// }
-
-float3 MotionToColor(float2 motion, float2 uv)
+float3 MotionToColor(float2 motion)
 {
-    //physics & noise gate
-    float dt = max(FRAME_TIME * 0.001, 0.001);
-    float2 velocity = motion / dt;
-    float gate = saturate(pow(length(motion) / (2.0 * BUFFER_PIXEL_SIZE.x), 3.0));
-    //asymptotic squash
-    float mag = length(velocity) * 5.0;
-    mag = mag / (1.0 + mag);
-    mag *= gate;
-    //anisotropic hatching
-    float2 angleDir = normalize(motion + 1e-9);
-    float grid = frac(dot(uv * BUFFER_SCREEN_SIZE, angleDir) * 0.2);
-    float streaks = smoothstep(0.0, 0.1, grid) * smoothstep(0.2, 0.1, grid);
-    //dynamic rainbow palette
     float angle = atan2(-motion.y, -motion.x) / 6.283 + 0.5;
-    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    float3 hue = abs(frac(angle.xxx + K.xyz) * 6.0 - K.www);
-    hue = saturate(hue - K.xxx);
-    //spectral tiers
-    float3 colorLow  = hue * 0.3;
-    float3 colorMid  = hue;
-    float3 colorHigh = lerp(hue, 1.0, 0.5);
-    float3 baseCloud = lerp(colorLow, colorMid, mag);
-    baseCloud = lerp(baseCloud, colorHigh, pow(mag, 2.0));
-    float3 motionColor = baseCloud + (streaks * mag * 0.5);
-    return lerp(0.1, motionColor, mag);
+    float rawLength = length(motion) / (15.0 * BUFFER_PIXEL_SIZE.x);
+    float compressed = rawLength / (1.0 + rawLength * 1.4);  //asymptotic squash
+    float boosted = pow(compressed, 0.5);  //lift shadows
+    float magnitude = saturate(lerp(compressed, boosted, saturate(rawLength * 3.0)));
+    float3 hsv = float3(angle, 1, magnitude);
+    float4 K = float4(1, 2/3.0, 1/3.0, 3);
+    float3 p = abs(frac(hsv.xxx + K.xyz) * 6 - K.www);
+    return hsv.z * lerp(K.xxx, clamp(p - K.xxx, 0, 1), hsv.y) + 0.1;
 }
 
 float4 DrawMotionVectors(float2 uv)
@@ -219,11 +154,11 @@ float4 DrawMotionVectors(float2 uv)
     static const float ARROWHEAD_LENGTH = 4.0; //pixels back from tip
     static const float WING_ANGLE = 0.6; //approx. 35 degrees from shaft axis
 
-    float3 baseColor = tex2Dlod(ReShade::BackBuffer, float4(uv, 0, 0)).rgb;
+    float3 baseColor = GetColor(uv);
     float2 motionTexelSize = BUFFER_PIXEL_SIZE * 8.0;
     float2 motionGrid = floor(uv / motionTexelSize / GRID_STEP) * motionTexelSize * GRID_STEP + motionTexelSize * GRID_STEP * 0.5;
     float2 gridPixelPos = motionGrid * BUFFER_SCREEN_SIZE;
-    float2 motion = tex2D(sLumaFlow, motionGrid).xy;
+    float2 motion = tex2D(sFlow, motionGrid).xy;
     float2 motionPixels = motion * BUFFER_SCREEN_SIZE;
     float motionMag = length(motionPixels);
     if (motionMag < 0.5 || GetDepth(motionGrid) >= 0.999) return float4(baseColor, 1.0);
@@ -267,7 +202,7 @@ float4 DrawMotionVectors(float2 uv)
     float distRight = length(toTip - closestRight);
     bool onRight = (distRight < ARROW_THICKNESS) && (projRight > 0) && (projRight < ARROWHEAD_LENGTH);
 
-    float3 arrowColor = MotionToColor(motion, uv);
+    float3 arrowColor = MotionToColor(motion);
     return float4((onShaft || onLeft || onRight) ? arrowColor : baseColor, 1.0);
 }
 
@@ -303,7 +238,7 @@ float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 po
     return ((err / 9.0) + EPSILON);
 }
 
-float2 Median9_3x3(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+float2 Median9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
 {
     float2 v[9];
     int idx = 0;
@@ -312,7 +247,6 @@ float2 Median9_3x3(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
 
     //bubble sort ensures the Median lands in v[4], only needs 5 passes
     //indices 4,5,6,7,8 contain the 5 largest items, so v[4] is the median
-    float2 temp;
     [unroll] for(int k = 0; k < 5; k++) for(int i = 0; i < 8 - k; i++) { //checks decrease as right side gets sorted
             float2 a = v[i];
             float2 b = v[i+1];
@@ -323,37 +257,46 @@ float2 Median9_3x3(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
     return v[4];
 }
 
-float2 Median9_5x5(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+float2 BilateralMedian9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
 {
-    static const int2 SPARSE_5X5[9] = {
-        int2(-2,-2), int2(0,-2), int2(2,-2),
-        int2(-2,0),  int2(0,0),  int2(2,0),
-        int2(-2,2),  int2(0,2),  int2(2,2)
+    static const int2 DENSE_3X3[9] = {
+        int2(-1,-1), int2(0,-1), int2(1,-1),
+        int2(-1, 0), int2(0, 0), int2(1, 0),
+        int2(-1, 1), int2(0, 1), int2(1, 1)
     };
-    float centerDepth = GetDepth(uv);
+    float lumaC = tex2Dlod(sCurrLuma, float4(uv,                                       0, 0)).x;
+    float lumaW = tex2Dlod(sCurrLuma, float4(uv + float2(-1.0, 0.0) * texelSize,        0, 0)).x;
+    float lumaE = tex2Dlod(sCurrLuma, float4(uv + float2( 1.0, 0.0) * texelSize,        0, 0)).x;
+    float lumaN = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0,-1.0) * texelSize,        0, 0)).x;
+    float lumaS = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0, 1.0) * texelSize,        0, 0)).x;
+    //central-difference gradient, wider baseline than quad ddx/ddy, derived from real samples
+    float dxLuma = (lumaE - lumaW) * 0.5;
+    float dyLuma = (lumaS - lumaN) * 0.5;
     float2 v[9];
     uint validCount = 0;
-
-    [unroll] for(int i = 0; i < 9; i++) {
-        float2 sampleUV = uv + float2(SPARSE_5X5[i]) * texelSize;
-        float sampleDepth = GetDepth(sampleUV);
-        bool isValid = abs(centerDepth - sampleDepth) <= 0.01;
-        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38); //pad invalid samples with a massive number so they get sorted to the very end
-        validCount += isValid ? 1u : 0u;
+    [unroll] for (int i = 0; i < 9; i++) {
+        int2 off = DENSE_3X3[i];
+        float2 sampleUV = uv + float2(off) * texelSize;
+        //cardinals + center use sampled luma; diagonals get linear prediction
+        float sampleLuma = lumaC; //covers (0,0)
+        if      (off.x == -1 && off.y ==  0) sampleLuma = lumaW;
+        else if (off.x ==  1 && off.y ==  0) sampleLuma = lumaE;
+        else if (off.x ==  0 && off.y == -1) sampleLuma = lumaN;
+        else if (off.x ==  0 && off.y ==  1) sampleLuma = lumaS;
+        else if (off.x != 0 && off.y != 0)   sampleLuma = lumaC + float(off.x) * dxLuma + float(off.y) * dyLuma;
+        bool isValid = abs(lumaC - sampleLuma) <= 0.05;
+        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38);
+        validCount += uint(isValid);
     }
-
-    if(validCount < 3u) return tex2Dlod(flowSrc, float4(uv, 0, mip)).xy;
-
-    //full sort because target median index fluctuates b/w 1 and 4
-    [unroll] for(int k = 0; k < 8; k++) for(int j = 0; j < 8 - k; j++) {
+    if(validCount < 3u) return v[4];
+    //right-to-left bubble: smallest reaches v[0] per pass; after 5 passes, v[0..4] sorted ascending
+    [unroll] for(int k = 0; k < 5; k++) for(int j = 7; j >= k; j--) {
             float2 a = v[j];
             float2 b = v[j+1];
             v[j]   = min(a, b);
             v[j+1] = max(a, b);
     }
-
     uint medianIdx = validCount / 2u;
-    //resolve median w/o dynamic array indexing; forces the compiler to keep 'v' entirely in registers
     float2 result = v[1]; //fallback for validCount == 3 (medianIdx 1)
     if (medianIdx == 2u) result = v[2];
     if (medianIdx == 3u) result = v[3];
@@ -361,89 +304,46 @@ float2 Median9_5x5(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
     return result;
 }
 
-float2 Median9_7x7(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip)
+float2 ATrousFilter(sampler2D motionSrc, float2 uv, uint dilation, uint mip)
 {
-    static const int2 SPARSE_7X7[9] = {
-        int2(-3,-3), int2(0,-3), int2(3,-3),
-        int2(-3,0),  int2(0,0),  int2(3,0),
-        int2(-3,3),  int2(0,3),  int2(3,3)
-    };
-    float centerDepth = GetDepth(uv);
-    float2 v[9];
-    uint validCount = 0;
+    float2 cc = tex2Dlod(sChroma, float4(uv, 0, mip)).rg;
+    float3 centerChroma = float3(cc, 1.0 - cc.r - cc.g); //rebuild b
+    float centerDepth = tex2Dlod(sDepth, float4(uv, 0, mip)).r;
+    float2 centerFlow = tex2Dlod(motionSrc, float4(uv, 0, 0)).xy;
+    float  centerConf = max(tex2Dlod(sConfidence, float4(uv, 0, 0)).r, 0.01); //0.01 floor prevents NaN if conf hits 0
+    float2 sum = centerFlow * centerConf;
+    float  totalWeight = centerConf;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        if (x == 0 && y == 0) continue;
+        float2 sampleUV     = uv + float2(x, y) * dilation * BUFFER_PIXEL_SIZE * 8.0; //*8 = stride of flow grid
+        float2 sampleFlow   = tex2Dlod(motionSrc, float4(sampleUV, 0, 0)).xy;
 
-    [unroll] for(int i = 0; i < 9; i++) {
-        float2 sampleUV = uv + float2(SPARSE_7X7[i]) * texelSize;
-        float sampleDepth = GetDepth(sampleUV);
-        bool isValid = abs(centerDepth - sampleDepth) <= 0.01;
-        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38);
-        validCount += isValid ? 1u : 0u;
+        float  sampleConf   = tex2Dlod(sConfidence, float4(sampleUV, 0, 0)).r;
+        float  confWeight   = pow(sampleConf, 3.0);
+
+        float  sampleDepth  = tex2Dlod(sDepth, float4(sampleUV, 0, mip)).r;
+        float absDepthDiff  = abs(centerDepth - sampleDepth);
+        float depthWeight   = (absDepthDiff < 0.003) ? 1.0 : 0.0;
+
+        float2 sc           = tex2Dlod(sChroma, float4(sampleUV, 0, mip)).rg;
+        float3 sampleChroma = float3(sc, 1.0 - sc.r - sc.g); //rebuild b
+        float chromaDiff    = distance(centerChroma, sampleChroma);
+        float chromaWeight  = pow(saturate(1.0 - chromaDiff * 3.0), 6.0); //3.0: scale, 6.0: sharpness
+
+        float weight        = confWeight * depthWeight * chromaWeight;
+        sum                += sampleFlow * weight;
+        totalWeight        += weight;
     }
-
-    if(validCount < 3u) return tex2Dlod(flowSrc, float4(uv, 0, mip)).xy;
-
-    [unroll] for(int k = 0; k < 8; k++) for(int j = 0; j < 8 - k; j++) {
-            float2 a = v[j];
-            float2 b = v[j+1];
-            v[j]   = min(a, b);
-            v[j+1] = max(a, b);
-    }
-
-    uint medianIdx = validCount / 2u;
-    float2 result = v[1];
-    if (medianIdx == 2u) result = v[2];
-    if (medianIdx == 3u) result = v[3];
-    if (medianIdx == 4u) result = v[4];
-    return result;
+    return sum / (totalWeight + EPSILON);
 }
 
-float2 BilateralBlur(sampler2D motionSrc, sampler2D lumaSrc, float2 uv, float2 texelSize, uint mip)
-{
-    float centerDepth = GetDepth(uv);
-    if(centerDepth >= 0.999) return float2(0, 0);
-
-    static const float LUMA_SIGMA = 0.1;
-    static const float SPATIAL_SIGMA = 1.5;
-    static const float DISOCCLUSION_THRESHOLD = 0.01;
-    static const float INV_SPATIAL_SIGMA_SQ = -0.5 / (SPATIAL_SIGMA * SPATIAL_SIGMA);
-    static const float INV_LUMA_SIGMA_SQ = -0.5 / (LUMA_SIGMA * LUMA_SIGMA);
-
-    //float2 centerFlow  = tex2Dlod(motionSrc, float4(uv, 0, 0)).xy;
-    float  centerLuma  = tex2Dlod(lumaSrc, float4(uv, 0, mip)).r;
-    float2 flowSum     = 0.0;
-    float  weightSum   = 0.0;
-
-    [unroll] for (int y = -2; y <= 2; ++y) for (int x = -2; x <= 2; ++x) {
-            float2 offset = float2(x, y) * texelSize;
-            float2 sampleUV = uv + offset;
-            float2 neighborFlow  = tex2Dlod(motionSrc, float4(sampleUV, 0, 0)).xy;
-            float  neighborLuma  = tex2Dlod(lumaSrc,   float4(sampleUV, 0, mip)).r;
-            float  neighborDepth = GetDepth(sampleUV);
-            //spatial weight (Gaussian falloff)
-            float spatialDistSq = dot(float2(x, y), float2(x, y));
-            float spatialWeight = exp(spatialDistSq * INV_SPATIAL_SIGMA_SQ);
-            //luma similarity weight
-            float lumaDiff   = centerLuma - neighborLuma;
-            float lumaWeight = exp(lumaDiff * lumaDiff * INV_LUMA_SIGMA_SQ);
-            //cutoff at depth discontinuities
-            float absDepthDiff = abs(centerDepth - neighborDepth);
-            float disocclusionGate = (absDepthDiff < DISOCCLUSION_THRESHOLD) ? 1.0 : 0.0;
-            //combine
-            float totalWeight = spatialWeight * lumaWeight * disocclusionGate;
-            //accumulate
-            flowSum += neighborFlow * totalWeight;
-            weightSum += totalWeight;
-    }
-    return flowSum / weightSum;
-}
-
-float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 uv, float2 texelSize, uint mip)
+float2 UpscaleFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 uv, float2 texelSize, uint mip)
 {
     if(FRAME_COUNT == 0) return float2(0, 0);
 
     float2 coarseTexelSize = rcp(float2(tex2Dsize(coarseSrc, 0)));
     //pool candidates for tournament selection. order matters here
-    float2 candidates[11];
+    float2 candidates[10];
     candidates[0]  = tex2D(coarseSrc, uv).xy ;
     candidates[1]  = tex2D(coarseSrc, uv + float2(0, -coarseTexelSize.y)).xy ;
     candidates[2]  = tex2D(coarseSrc, uv + float2(0,  coarseTexelSize.y)).xy ;
@@ -453,12 +353,11 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
     candidates[6]  = tex2D(coarseSrc, uv + float2( coarseTexelSize.x, -coarseTexelSize.y)).xy ;
     candidates[7]  = tex2D(coarseSrc, uv + float2(-coarseTexelSize.x,  coarseTexelSize.y)).xy ;
     candidates[8]  = tex2D(coarseSrc, uv + float2(coarseTexelSize.x, coarseTexelSize.y)).xy ;
-    candidates[9]  = float2(0, 0);
-    candidates[10] = tex2D(sPrevFrameFlow, uv).xy;
+    candidates[9] = tex2D(sPrevFrameFlow, uv).xy;
 
     float minCost = 1e6;
     float2 prediction = candidates[0];
-    [loop] for (int i = 0; i < 11; i++) {
+    [loop] for (int i = 0; i < 10; i++) {
         float cost = ZMSAD(currLumaSrc, prevLumaSrc, uv, uv + candidates[i], texelSize, mip);
         if (cost < minCost) {
             minCost = cost;
@@ -484,85 +383,61 @@ float2 RefineFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLuma
 /*--------------.
 | :: SHADERS :: |
 '--------------*/
-static const int2 LUMA_OFFSETS[13] = {
-                         int2(0,-2),
-             int2(-1,-1),int2(0,-1),int2(1,-1),
-  int2(-2,0),int2(-1,0), int2(0,0), int2(1,0), int2(2,0),
-             int2(-1,1), int2(0,1), int2(1,1),
-                         int2(0,2)
-};
-
-//gaussian (ish) weights for a dense 13-point kernel
-static const float LUMA_WEIGHTS[13] = {
-                1,              //(0,-2)
-         3,     4,     3,       //diagonals, cardinal, diagonal
-    1,   4,     6,     4,   1,  //far, cardinals, center, cardinals, far
-         3,     4,     3,       //diagonals, cardinal, diagonal
-                1               //(0,2)
-};
-
-#if _COMPUTE_ENABLED_
-
-//thread group size
-#define LUMA_CS_W  16
-#define LUMA_CS_H  16   //16x16 = 256 threads/group — keep multiples of warp size (32)
-#define LUMA_BORDER 2
-#define LUMA_TILE   (LUMA_CS_W + LUMA_BORDER * 2)   //20×20 = 400 texels
-
-//groupshared memory
-groupshared float currLumaGS[LUMA_TILE * LUMA_TILE];    //400 floats = 1600 bytes LDS
-
-void CS_CurrLuma(CSInput input)
+void PS_ReconstructNormals(VSOUT input, out float4 gbuffer : SV_Target0, out float depthC : SV_Target1)
 {
-    //co-op tile load: 256 threads load 400 texels
-    int2 tileOrigin = int2(input.groupID.xy) * LUMA_CS_W - LUMA_BORDER; //tileOrigin is top-left pixel of this tile in screen space (can be -ve at borders)
-    [unroll] for(uint t = input.flatIndex; t < LUMA_TILE * LUMA_TILE; t += LUMA_CS_W * LUMA_CS_H) //max 2 iterations: ceil(400/256)
-    {
-        int2   loadPx  = tileOrigin + int2(t % LUMA_TILE, t / LUMA_TILE);
-               loadPx  = clamp(loadPx, 0, int2(BUFFER_WIDTH - 1, BUFFER_HEIGHT - 1));
-        float2 loadUV  = (float2(loadPx) + 0.5) * BUFFER_PIXEL_SIZE;
-        float3 color   = GetColor(loadUV);
-        float  luma    = dot(color, float3(0.2126, 0.7152, 0.0722));
-        currLumaGS[t]     = luma * rcp(1.0 + luma);       //reinhard done ONCE per texel, not per tap
-    }
+    depthC = GetDepth(input.uv);
 
-    barrier();
+    const float2 offsetX = float2(BUFFER_PIXEL_SIZE.x, 0);
+    const float2 offsetY = float2(0, BUFFER_PIXEL_SIZE.y);
 
-    //OOB guard
-    if(any(input.dispatchID.xy >= uint2(BUFFER_WIDTH, BUFFER_HEIGHT))) return;
+    float3 pC = UVToViewSpace(input.uv, depthC, input);
+    float3 pL = UVToViewSpace(input.uv - offsetX, GetDepth(input.uv - offsetX), input);
+    float3 pR = UVToViewSpace(input.uv + offsetX, GetDepth(input.uv + offsetX), input);
+    float3 pT = UVToViewSpace(input.uv - offsetY, GetDepth(input.uv - offsetY), input);
+    float3 pB = UVToViewSpace(input.uv + offsetY, GetDepth(input.uv + offsetY), input);
 
-    //each thread accumulates its 13 taps from LDS
-    int2  localCenter = int2(input.localID.xy) + LUMA_BORDER; //this thread's center in tile space
-    float lumaSum     = 0.0;
+    float3 diffX2 = pR - pC;
+    float3 diffX1 = pC - pL;
+    float3 diffY2 = pB - pC;
+    float3 diffY1 = pC - pT;
 
-    //our work
-    [unroll] for(int k = 0; k < 13; k++) {
-        int2 tilePos = localCenter + LUMA_OFFSETS[k];
-        lumaSum += currLumaGS[tilePos.y * LUMA_TILE + tilePos.x] * LUMA_WEIGHTS[k];
-    }
+    float lenSqX2 = dot(diffX2, diffX2);
+    float lenSqX1 = dot(diffX1, diffX1);
+    float lenSqY2 = dot(diffY2, diffY2);
+    float lenSqY1 = dot(diffY1, diffY1);
 
-    tex2Dstore(stCurrLuma, input.dispatchID.xy, lumaSum * rcp(38.0));  //38.0 = sum of all weights as compile-time const.
+    float3 ddx = lenSqX2 < lenSqX1 ? diffX2 : diffX1;
+    float3 ddy = lenSqY2 < lenSqY1 ? diffY2 : diffY1;
+    float3 geoNormal = normalize(cross(ddx, ddy));
+    gbuffer = float4(geoNormal, depthC);
 }
 
-#else
-
-float PS_CurrLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+void PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 chroma : SV_Target0, out float luma : SV_Target1)
 {
-    float lumaSum = 0.0;
-    float weightSum = 0.0;
-    [unroll] for(int i = 0; i < 13; i++) {
-        float2 sampleUV = uv + float2(LUMA_OFFSETS[i]) * BUFFER_PIXEL_SIZE;
-        float3 color = GetColor(sampleUV);
-        float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
-        luma = luma * rcp(1.0 + luma); //reinhard compression for HDR stability
-        float weight = LUMA_WEIGHTS[i];
-        lumaSum += luma * weight;
-        weightSum += weight;
-    }
-    return lumaSum / weightSum;
-}
+    static const int2 OFFSETS[5] = {
+                     int2( 0,-2),
+        int2(-2, 0), int2( 0, 0), int2( 2, 0),
+                     int2( 0, 2)
+    };
+    static const float WEIGHTS[5] = {
+              1,
+        1,    2,    1,
+              1
+    };
 
-#endif //_COMPUTE_ENABLED_
+    float lumSum = 0.0;
+    float3 cC = GetColor(uv);
+    [unroll] for(int i = 0; i < 5; i++) {
+        float2 sampleUV = uv + float2(OFFSETS[i]) * BUFFER_PIXEL_SIZE;
+        float3 color = (i == 2) ? cC : GetColor(sampleUV);
+        float lum = dot(color, float3(0.2126, 0.7152, 0.0722));
+        lum = lum * rcp(1.0 + lum); //reinhard for HDR compatibility
+        lumSum += lum * WEIGHTS[i];
+    }
+
+    chroma = cC.rg * rcp(dot(cC, float3(1.0, 1.0, 1.0)) + EPSILON); //rg-chromaticity
+    luma = lumSum * rcp(6.0); //6 = sum of weights
+}
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -572,7 +447,7 @@ float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Ta
     static const uint mip = 5;
     float2 texelSize = BUFFER_PIXEL_SIZE * exp2(mip);
 
-    //candidate seeds for the coarsest level
+    //candidate seeds for the coarsest level for tournament selection
     float2 prevSeed   = tex2D(sPrevFrameFlow, uv).xy;
     float2 zeroSeed   = float2(0, 0);
     float prevCost   = ZMSAD(sCurrLuma, sPrevLuma, uv, uv + prevSeed,   texelSize, mip);
@@ -596,101 +471,100 @@ float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Ta
     return bestFlow;
 }
 
-float2 PS_RefineFlow64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_UpscaleFlow64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return RefineFlow(sLumaFlow128, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*16.0, 4);
+    return UpscaleFlow(sFlow128, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*16.0, 4);
 }
 
-float2 PS_FilterFlow64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_MedianPass64(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9_3x3(sLumaFlow64A, uv, BUFFER_PIXEL_SIZE*64.0, 6);
+    return Median9(sFlow64A, uv, BUFFER_PIXEL_SIZE*64.0, 6);
 }
 
-float2 PS_RefineFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_UpscaleFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return RefineFlow(sLumaFlow64B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    return UpscaleFlow(sFlow64B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
-float2 PS_FilterFlow32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_MedianPass32(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9_3x3(sLumaFlow32A, uv, BUFFER_PIXEL_SIZE*32.0, 5);
+    return Median9(sFlow32A, uv, BUFFER_PIXEL_SIZE*32.0, 5);
 }
 
-float2 PS_RefineFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_UpscaleFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return RefineFlow(sLumaFlow32B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*4.0, 2);
+    return UpscaleFlow(sFlow32B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*4.0, 2);
 }
 
-float2 PS_FilterFlow16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_MedianPass16(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return Median9_3x3(sLumaFlow16A, uv, BUFFER_PIXEL_SIZE*16.0, 4);
+    return Median9(sFlow16A, uv, BUFFER_PIXEL_SIZE*16.0, 4);
 }
 
-float2 PS_RefineFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_UpscaleFlow8(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return RefineFlow(sLumaFlow16B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*2.0, 1);
+    return UpscaleFlow(sFlow16B, sCurrLuma, sPrevLuma, uv, BUFFER_PIXEL_SIZE*2.0, 1);
 }
 
-float2 PS_FilterFlow8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_MedianPass8A(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-#if RENDER_QUALITY
-    return Median9_7x7(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-#else
-    return Median9_3x3(sLumaFlow8A, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-#endif
+    return BilateralMedian9(sFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
-float2 PS_FilterFlow8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_MedianPass8B(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-#if RENDER_QUALITY
-    return Median9_5x5(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-#else
-    return Median9_3x3(sLumaFlow, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-#endif
+    return BilateralMedian9(sFlow8, uv, BUFFER_PIXEL_SIZE*8.0, 3);
 }
 
-#if RENDER_QUALITY
-    float2 PS_FilterFlow8C(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
-    {
-        return Median9_3x3(sLumaFlow8B, uv, BUFFER_PIXEL_SIZE*8.0, 3);
-    }
-#endif
-
-float2 PS_BlurFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float2 PS_ATrousPassA(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target //stride 1
 {
-    float2 flow = BilateralBlur(sLumaFlow8A, sCurrLuma, uv, BUFFER_PIXEL_SIZE*8.0, 3);
+    return ATrousFilter(sFlow, uv, 2, 3);
+}
+
+float2 PS_ATrousPassB(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target //stride 2
+{
+    float2 flow = ATrousFilter(sFlow8, uv, 4, 1);
     //kill sub-pixel noise
     float flowPixelMag = length(flow / BUFFER_PIXEL_SIZE);
     float gate = saturate(1.0 - pow(1.0 - saturate(saturate(flowPixelMag) - 0.2), 10.0)); //SNAP TO REALITY
     return flow*gate;
 }
 
-float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+float PS_Confidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     if(FRAME_COUNT == 0) return 0.0; //no confidence
 
-    float2 flow = tex2D(sLumaFlow, uv).xy;
+    float2 flow = tex2D(sFlow, uv).xy;
     float2 prevUV = uv + flow; //warp prev frame forward
     if(IsOOB(prevUV)) return 0.0;
 
-    //photometric error
-    //mip 2 luma acts as a low-pass filter & should reduce sub-pixel noise
-    float currLuma = tex2Dlod(sCurrLuma, float4(uv, 0, 2)).r;
-    float prevLuma = tex2Dlod(sPrevLuma, float4(prevUV, 0, 2)).r;
-    float lumaError = abs(currLuma - prevLuma);
+    //look at local contrast for pattern confidence
+    float sumX = 0, sumX2 = 0, sumY = 0, sumY2 = 0;
+    float2 lumaTexSize = BUFFER_PIXEL_SIZE * 4.0;
+    static const float2 offsets[5] = {
+                      float2(0, 1),
+        float2(-1,0), float2(0, 0), float2(1,0),
+                      float2(0,-1)
+    };
+    [unroll] for(int i = 0; i < 5; i++) {
+        float valCurr = tex2Dlod(sCurrLuma, float4(uv + offsets[i] * lumaTexSize, 0, 2)).r;
+        float valPrev = tex2Dlod(sPrevLuma, float4(prevUV + offsets[i] * lumaTexSize, 0, 2)).r;
+        sumX += valCurr; sumX2 += valCurr * valCurr;
+        sumY += valPrev; sumY2 += valPrev * valPrev;
+    }
+    float varCurr = max(0.0, (sumX2 / 5.0) - (sumX / 5.0 * sumX / 5.0));
+    float varPrev = max(0.0, (sumY2 / 5.0) - (sumY / 5.0 * sumY / 5.0));
+    float patternConf = 1.0 - saturate(abs(sqrt(varCurr) - sqrt(varPrev)) / (sqrt(varCurr) + 0.01));
 
-    //pattern confidence
-    float2 gradCurr = float2(ddx(currLuma), ddy(currLuma));
-    float2 gradPrev = float2(ddx(prevLuma), ddy(prevLuma));
-    float magCurr = length(gradCurr);
-    float magPrev = length(gradPrev);
-    float patternConf = 1.0 - saturate(abs(magCurr - magPrev) / (magCurr + 0.01)); //we compare structural gradients
-
-    //spatial confidence using flow Jacobian/divergence
-    float2 dFdx = ddx(flow);
-    float2 dFdy = ddy(flow);
-    float spatialDiff = length(dFdx) + length(dFdy); //high change in flow indicates edge of a moving object
+    //look at neighborhood for flow consistency
     float flowMagnitude = length(flow);
+    float2 flowTexelSize = BUFFER_PIXEL_SIZE * 8.0;
+    float2 flowN = tex2Dlod(sFlow, float4(uv + float2(0, -flowTexelSize.y), 0, 0)).xy;
+    float2 flowS = tex2Dlod(sFlow, float4(uv + float2(0,  flowTexelSize.y), 0, 0)).xy;
+    float2 flowE = tex2Dlod(sFlow, float4(uv + float2( flowTexelSize.x, 0), 0, 0)).xy;
+    float2 flowW = tex2Dlod(sFlow, float4(uv + float2(-flowTexelSize.x, 0), 0, 0)).xy;
+    float2 avgNeighborFlow = (flowN + flowS + flowE + flowW) * 0.25;
+    float spatialDiff = distance(flow, avgNeighborFlow);
     float spatialThreshold = flowMagnitude * 0.5 + BUFFER_PIXEL_SIZE.x;
     float spatialConfidence = saturate(1.0 - (spatialDiff / (spatialThreshold + EPSILON)));
 
@@ -700,19 +574,18 @@ float PS_ComputeConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_
     //float panThreshold = BUFFER_PIXEL_SIZE.x * 30.0;
     //float lengthConfidence = (flowMagnitude <= panThreshold) ? 1.0 : rcp(((flowMagnitude - panThreshold) / panThreshold) * 0.1 + 1.0);
 
-    //photometric confidence: use spatial/pattern trust to decide how much to care about the luma error
-    float strictness = lengthConfidence * spatialConfidence * patternConf;
-    float photometricConfidence = exp(-lumaError * 12.0 * strictness);
+    //current frame final confidence
+    float currentConf = spatialConfidence * lengthConfidence * patternConf;
 
-    float currentConf = photometricConfidence * spatialConfidence * lengthConfidence * patternConf; //current frame final confidence
-    float historyConf = tex2D(sPrevConfidence, prevUV).r; //temporal filter
+    //stability filter/temporal hysteresis
+    float historyConf = tex2D(sPrevConfidence, prevUV).r;
 
     return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable while a high alpha (e.g 0.5) makes it react to changes quickly
 }
 
 float2 PS_StoreFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    return tex2D(sLumaFlow, uv).xy;
+    return tex2D(sFlow, uv).xy;
 }
 
 float PS_StoreLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -722,47 +595,18 @@ float PS_StoreLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 
 float PS_StoreConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD): SV_Target
 {
-    return tex2D(sFlowConfidence, uv).r;
-}
-
-float4 PS_ReconstructNormals(VSOUT input) : SV_Target
-{
-    float depthC = ReShade::GetLinearizedDepth(input.uv);
-
-    const float2 offsetX = float2(BUFFER_PIXEL_SIZE.x, 0);
-    const float2 offsetY = float2(0, BUFFER_PIXEL_SIZE.y);
-
-    float3 pC = UVToViewSpace(input.uv, depthC, input);
-    float3 pL = UVToViewSpace(input.uv - offsetX, ReShade::GetLinearizedDepth(input.uv - offsetX), input);
-    float3 pR = UVToViewSpace(input.uv + offsetX, ReShade::GetLinearizedDepth(input.uv + offsetX), input);
-    float3 pT = UVToViewSpace(input.uv - offsetY, ReShade::GetLinearizedDepth(input.uv - offsetY), input);
-    float3 pB = UVToViewSpace(input.uv + offsetY, ReShade::GetLinearizedDepth(input.uv + offsetY), input);
-
-    float3 diffX2 = pR - pC;
-    float3 diffX1 = pC - pL;
-    float3 diffY2 = pB - pC;
-    float3 diffY1 = pC - pT;
-
-    float lenSqX2 = dot(diffX2, diffX2);
-    float lenSqX1 = dot(diffX1, diffX1);
-    float lenSqY2 = dot(diffY2, diffY2);
-    float lenSqY1 = dot(diffY1, diffY1);
-
-    float3 ddx = lenSqX2 < lenSqX1 ? diffX2 : diffX1;
-    float3 ddy = lenSqY2 < lenSqY1 ? diffY2 : diffY1;
-    float3 geoNormal = normalize(cross(ddx, ddy));
-    return float4(geoNormal, depthC);
+    return tex2D(sConfidence, uv).r;
 }
 
 #if DEBUG_KERNEL
 float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    float3 sceneColor = tex2D(ReShade::BackBuffer, uv).rgb;
+    float3 sceneColor = GetColor(uv);
     switch(DEBUG_VIEW)
     {
         case 0: discard;
         case 1: {
-            float4 gbuffer = tex2D(sKernelNormals, uv);
+            float4 gbuffer = tex2D(sNormals, uv);
             float3 normal = gbuffer.rgb;
             float depth = gbuffer.a;
             bool isLeftHalf = uv.x < 0.5;
@@ -770,14 +614,14 @@ float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
             if (isLeftHalf)
                 dbg = float4(normal * 0.5 + 0.5, 1.0); //left: normals
             else
-                dbg = float4(DepthColorMap(depth), 1.0); //right: depth gradient
+                dbg = float4(DepthGradient(depth, uv), 1.0); //right: depth gradient
             return dbg;
         }
-        case 2:  return float4(MotionToColor(tex2D(sLumaFlow, uv).xy, uv), 1);
+        case 2:  return float4(MotionToColor(tex2D(sFlow, uv).xy), 1);
         case 3:  return DrawMotionVectors(uv);
         case 4:
         {
-            float confidence = tex2D(sFlowConfidence, uv).x;
+            float confidence = tex2D(sConfidence, uv).x;
             float3 confidenceColor;
             if (confidence < 0.5)
                 confidenceColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0);
@@ -794,44 +638,36 @@ float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 | :: TECHNIQUE :: |
 '----------------*/
 technique Lumenite_Kernel <
-    ui_label = "LUMENITE: Kernel";
+    ui_label = "LUMENITE: Kernel 2.0";
     ui_tooltip = "Pre-effect for LumeniteFX shaders.";
 >
 {
-    //optical flow
-#if _COMPUTE_ENABLED_
-    pass
-    {
-        ComputeShader = CS_CurrLuma<LUMA_CS_W, LUMA_CS_H>;
-        DispatchSizeX = (BUFFER_WIDTH  + LUMA_CS_W - 1) / LUMA_CS_W;
-        DispatchSizeY = (BUFFER_HEIGHT + LUMA_CS_H - 1) / LUMA_CS_H;
-    }
-#else
-    pass { VertexShader = PostProcessVS; PixelShader = PS_CurrLuma;          RenderTarget = tCurrLuma;       }
-#endif
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;    RenderTarget = tLumaFlow128;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow64;      RenderTarget = tLumaFlow64A;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow64;      RenderTarget = tLumaFlow64B;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow32;      RenderTarget = tLumaFlow32A;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow32;      RenderTarget = tLumaFlow32B;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow16;      RenderTarget = tLumaFlow16A;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow16;      RenderTarget = tLumaFlow16B;    }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_RefineFlow8;       RenderTarget = tLumaFlow8A;     }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8A;      RenderTarget = tLumaFlow;       }
-#if RENDER_QUALITY
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8B;     }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8C;      RenderTarget = tLumaFlow8A;     }
-#else
-    pass { VertexShader = PostProcessVS; PixelShader = PS_FilterFlow8B;      RenderTarget = tLumaFlow8A;     }
-#endif
-    pass { VertexShader = PostProcessVS; PixelShader = PS_BlurFlow;          RenderTarget = tLumaFlow;       }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeConfidence; RenderTarget = tFlowConfidence; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow;         RenderTarget = tPrevFrameFlow;  }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreLuma;         RenderTarget = tPrevLuma;       }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreConfidence;   RenderTarget = tPrevConfidence; }
-
     //normals
-    pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget = tKernelNormals; }
+    pass { VertexShader = VS; PixelShader = PS_ReconstructNormals;         RenderTarget0 = tNormals; RenderTarget1 = tDepth;    }
+
+    //optical flow
+    pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget0 = tChroma;  RenderTarget1 = tCurrLuma; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow32;   RenderTarget  = tFlow32A;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass32;    RenderTarget  = tFlow32B;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow16;   RenderTarget  = tFlow16A;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass16;    RenderTarget  = tFlow16B;                            }
+
+
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow8;    RenderTarget  = tFlow;                               }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8A;    RenderTarget  = tFlow8;                              }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8B;    RenderTarget  = tFlow;                               }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_Confidence;      RenderTarget  = tConfidence;                         }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassA;     RenderTarget  = tFlow8;                              }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassB;     RenderTarget  = tFlow;                               }
+
+
+
+    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow;       RenderTarget  = tPrevFrameFlow;                      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreLuma;       RenderTarget  = tPrevLuma;                           }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreConfidence; RenderTarget  = tPrevConfidence;                     }
 
     //debug views
 #if DEBUG_KERNEL

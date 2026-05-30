@@ -19,7 +19,7 @@
         Filename   : lumenite_LSAO.fx
         Version    : 2026.05.12
         Author     : Afzaal (Kaidō)
-        Description: Large-Scale Ray Traced Ambient Occlusion.
+        Description: Large-Scale Ray Traced Ambient Occlusion (Screen Space).
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
 
         ========================================================================
@@ -78,16 +78,19 @@ uniform float AO_INTENSITY <
 /*--------------.
 | :: IMPORTS :: |
 '--------------*/
-//optical flow
-texture2D tLumaFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
-sampler2D sLumaFlow { Texture = tLumaFlow; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+namespace Kernel {
+    texture2D tFlow { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = RG16F; };
+    sampler2D sFlow { Texture = tFlow; MagFilter = POINT; MinFilter = POINT; };
 
-texture2D tFlowConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
-sampler2D sFlowConfidence { Texture = tFlowConfidence; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
+    texture2D tConfidence { Width = BUFFER_WIDTH/8; Height = BUFFER_HEIGHT/8; Format = R16F; };
+    sampler2D sConfidence { Texture = tConfidence; };
 
-//surface normals
-texture tKernelNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sKernelNormals { Texture = tKernelNormals; };
+    texture tNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
+    sampler sNormals { Texture = tNormals; };
+
+    texture2D tDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 4; };
+    sampler2D sDepth { Texture = tDepth; };
+}
 
 namespace LumeniteLSAO {
 
@@ -160,11 +163,11 @@ float CalculateDepthFade(float depth)
 
 float2 ATrousFilter(sampler SourceSampler, float2 uv, uint dilation, bool adaptiveDilation)
 {
-    float4 gbuffer = tex2D(sKernelNormals, uv);
+    float4 gbuffer = tex2D(Kernel::sNormals, uv);
     if (gbuffer.a == 0 || gbuffer.a >= DEPTH_BOUNDARY) return float2(1.0, 0.0);
 
     [branch] if (adaptiveDilation) {
-        float confidence = tex2Dlod(sFlowConfidence, float4(uv, 0, 0)).r;
+        float confidence = tex2Dlod(Kernel::sConfidence, float4(uv, 0, 0)).r;
         dilation += uint(round((1.0 - confidence) * 2.0)); //scale filter kernel w. motion by up to a factor of 2
     }
 
@@ -177,7 +180,7 @@ float2 ATrousFilter(sampler SourceSampler, float2 uv, uint dilation, bool adapti
         if (x == 0 && y == 0) continue;
         float2 sampleUV    = uv + float2(x, y) * dilation * (BUFFER_PIXEL_SIZE * 2.0); //don't forget the x2.0 to properly step half-res grid!
         float2 sampleData  = tex2Dlod(SourceSampler, float4(sampleUV, 0, 0)).rg;
-        float4 sampleGeo   = tex2Dlod(sKernelNormals, float4(sampleUV, 0, 0));
+        float4 sampleGeo   = tex2Dlod(Kernel::sNormals, float4(sampleUV, 0, 0));
         float depthWeight   = exp(-abs(gbuffer.a - sampleGeo.a) / (gbuffer.a * 0.02 + 0.001));
         float normalWeight = pow(saturate(dot(gbuffer.rgb, sampleGeo.rgb)), 50.0);
         float aoDiff       = centerData.r - sampleData.r;
@@ -208,10 +211,10 @@ float PS_GenerateMip0(VSOUT input) : SV_Target
                       blockOriginUV + BUFFER_PIXEL_SIZE * float2(1.5, 0.5),
                       blockOriginUV + BUFFER_PIXEL_SIZE * float2(0.5, 1.5),
                       blockOriginUV + BUFFER_PIXEL_SIZE * float2(1.5, 1.5) };
-    float d0 = ReShade::GetLinearizedDepth(uvs[0]);
-    float d1 = ReShade::GetLinearizedDepth(uvs[1]);
-    float d2 = ReShade::GetLinearizedDepth(uvs[2]);
-    float d3 = ReShade::GetLinearizedDepth(uvs[3]);
+    float d0 = tex2D(Kernel::sDepth, uvs[0]).r;
+    float d1 = tex2D(Kernel::sDepth, uvs[1]).r;
+    float d2 = tex2D(Kernel::sDepth, uvs[2]).r;
+    float d3 = tex2D(Kernel::sDepth, uvs[3]).r;
     return min(min(d0, d1), min(d2, d3));
 }
 
@@ -223,7 +226,7 @@ float PS_ReduceMip5  (VSOUT input) : SV_Target { return SamplePrevHiZ(input.uv, 
 
 float PS_TraceAO(VSOUT input) : SV_Target
 {
-    float4 gbuffer = tex2D(sKernelNormals, input.uv);
+    float4 gbuffer = tex2D(Kernel::sNormals, input.uv);
     float3 normal = gbuffer.rgb;
     float depth = gbuffer.a;
     if (depth == 0 || depth >= DEPTH_BOUNDARY) discard;
@@ -267,7 +270,7 @@ float PS_TraceAO(VSOUT input) : SV_Target
         }
 
         //hit test
-        float sceneDepth = ReShade::GetLinearizedDepth(hitPos);
+        float sceneDepth = tex2Dlod(Kernel::sDepth, float4(hitPos, 0, 0)).r;
         float depthDiff = currentPos.z - sceneDepth;
         float maxThickness = currentPos.z * 0.6;
         if (depthDiff > (currentPos.z * 0.0001) && depthDiff < maxThickness) {
@@ -290,16 +293,16 @@ float PS_TraceAO(VSOUT input) : SV_Target
 
 float2 PS_TemporalFilter(VSOUT input) : SV_Target
 {
-    float depth = tex2D(sKernelNormals, input.uv).a;
+    float depth = tex2D(Kernel::sDepth, input.uv).r;
     //overwrite noise at boundary with clean White, prevents gaps
     if (depth >= DEPTH_BOUNDARY) return float2(1.0, 1.0); //1.0 AO, 1.0 Moment
     if (depth == 0) discard;
     float ao = tex2D(sAOTrace, input.uv).r;
     ao = lerp(1.0, ao, CalculateDepthFade(depth));
     float moment = ao * ao;
-    float2 flow = tex2D(sLumaFlow, input.uv).xy;
-    float confidence = tex2D(sFlowConfidence, input.uv).x;
-    confidence = saturate(confidence + log2(2.0 - confidence) * 0.6); //boost confidence
+    float2 flow = tex2D(Kernel::sFlow, input.uv).xy;
+    float confidence = tex2D(Kernel::sConfidence, input.uv).x;
+    confidence = saturate(confidence + log2(2.0 - confidence) * 0.55); //boost confidence
     float2 rawHistory = tex2D(sPrevAO, input.uv + flow).rg; //history stores "1.0 - AO". 0.0 (Black Texture) -> Reads as 1.0 (White)
     float prevAO = 1.0 - rawHistory.r;
     float prevMoment = 1.0 - rawHistory.g;
@@ -325,7 +328,7 @@ float2 PS_ATrousPass1(VSOUT input) : SV_Target { return ATrousFilter(sAO1, input
 
 float4 PS_ToDisplay(VSOUT input) : SV_Target
 {
-    float depth = tex2D(sKernelNormals, input.uv).a;
+    float depth = tex2D(Kernel::sDepth, input.uv).r;
     float ao = ATrousFilter(sAO2Linear, input.uv, 4, true).r; //stable AO mask (fades to 1.0)
     if (DEBUG_VIEW) {
         #if BUFFER_COLOR_SPACE > 1
@@ -345,7 +348,7 @@ float4 PS_ToDisplay(VSOUT input) : SV_Target
 '----------------*/
 technique Lumenite_LSAO <
     ui_label = "LUMENITE: LSAO";
-    ui_tooltip = "Large-Scale Ray Traced Ambient Occlusion.";
+    ui_tooltip = "Large-Scale Ray Traced Ambient Occlusion (Screen Space).";
 >
 {
     pass { VertexShader = VS; PixelShader = PS_GenerateMip0;   RenderTarget = tHiZMip0; }
