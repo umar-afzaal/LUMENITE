@@ -16,7 +16,7 @@
         Discord    : https://discord.gg/deXJrW2dx6
 
         Filename   : lumenite_SSSR.fx
-        Version    : 2026.05.09
+        Version    : 2026.05.30
         Author     : Afzaal (Kaidō)
         Description: Stochastic Screen Space Reflections.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)

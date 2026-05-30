@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Helpers.fxh
-        Version    : 2026.05.09
+        Version    : 2026.05.30
         Author     : Afzaal (Kaidō)
         Description: Helper functions for Lumenite shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
