@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Kernel.fx
-        Version    : 2026.05.30
+        Version    : 2026.06.03
         Author     : Afzaal (Kaidō)
         Description: Pre-effect for various LumeniteFX shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -414,29 +414,10 @@ void PS_ReconstructNormals(VSOUT input, out float4 gbuffer : SV_Target0, out flo
 
 void PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 chroma : SV_Target0, out float luma : SV_Target1)
 {
-    static const int2 OFFSETS[5] = {
-                     int2( 0,-2),
-        int2(-2, 0), int2( 0, 0), int2( 2, 0),
-                     int2( 0, 2)
-    };
-    static const float WEIGHTS[5] = {
-              1,
-        1,    2,    1,
-              1
-    };
-
-    float lumSum = 0.0;
-    float3 cC = GetColor(uv);
-    [unroll] for(int i = 0; i < 5; i++) {
-        float2 sampleUV = uv + float2(OFFSETS[i]) * BUFFER_PIXEL_SIZE;
-        float3 color = (i == 2) ? cC : GetColor(sampleUV);
-        float lum = dot(color, float3(0.2126, 0.7152, 0.0722));
-        lum = lum * rcp(1.0 + lum); //reinhard for HDR compatibility
-        lumSum += lum * WEIGHTS[i];
-    }
-
-    chroma = cC.rg * rcp(dot(cC, float3(1.0, 1.0, 1.0)) + EPSILON); //rg-chromaticity
-    luma = lumSum * rcp(6.0); //6 = sum of weights
+    float3 color = GetColor(uv);
+    chroma = color.rg * rcp(dot(color, float3(1.0, 1.0, 1.0)) + EPSILON); //rg-chromaticity
+    luma = dot(color, float3(0.2126, 0.7152, 0.0722));
+    luma = luma * rcp(1.0 + luma);
 }
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
