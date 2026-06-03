@@ -147,63 +147,80 @@ float3 MotionToColor(float2 motion)
     return hsv.z * lerp(K.xxx, clamp(p - K.xxx, 0, 1), hsv.y) + 0.1;
 }
 
+float SegmentDist(float2 p, float2 a, float2 b) //anti-aliased distance from point p to segment a-b
+{
+    float2 pa = p - a;
+    float2 ba = b - a;
+    float  h  = saturate(dot(pa, ba) / (dot(ba, ba) + EPSILON));
+    return length(pa - ba * h);
+}
+
 float4 DrawMotionVectors(float2 uv)
 {
-    static const float ARROW_THICKNESS = 1.0;
-    static const int GRID_STEP = 2;
-    static const float ARROWHEAD_LENGTH = 4.0; //pixels back from tip
-    static const float WING_ANGLE = 0.6; //approx. 35 degrees from shaft axis
+    static const int    GATHER          = 2;    //cell radius searched (5x5); always MAX_LENGTH <= GATHER*GRID_SPACING
+    static const float  GRID_SPACING    = 16.0; //px between grid nodes
+    static const float  DOT_RADIUS      = 2.0;  //px radius of node dots
+    static const float  GRID_OPACITY    = 0.20; //0..1 lattice visibility
+    static const float3 GRID_TINT       = float3(0.55, 0.55, 0.60);
+
+    static const float SHAFT_THICKNESS = 1.5;   //px half-width of shaft (larger)
+    static const float HEAD_LENGTH     = 6.0;   //px length of arrowhead (larger)
+    static const float HEAD_HALF_WIDTH = 4.0;   //px half-width of head base (larger)
+    static const float MIN_LENGTH      = 7.0;   //px shortest arrow
+    static const float MAX_LENGTH      = 30.0;  //px longest arrow (<= GATHER*GRID_SPACING)
+    static const float LENGTH_SCALE    = 2.5;   //arrow px per motion px (elongation gain)
+    static const float AA              = 0.9;   //px edge softness
 
     float3 baseColor = GetColor(uv);
-    float2 motionTexelSize = BUFFER_PIXEL_SIZE * 8.0;
-    float2 motionGrid = floor(uv / motionTexelSize / GRID_STEP) * motionTexelSize * GRID_STEP + motionTexelSize * GRID_STEP * 0.5;
-    float2 gridPixelPos = motionGrid * BUFFER_SCREEN_SIZE;
-    float2 motion = tex2D(sFlow, motionGrid).xy;
-    float2 motionPixels = motion * BUFFER_SCREEN_SIZE;
-    float motionMag = length(motionPixels);
-    if (motionMag < 0.5 || GetDepth(motionGrid) >= 0.999) return float4(baseColor, 1.0);
-    float arrowLength = clamp(motionMag * 3.0, 8.0, 48.0);
-    float2 arrowDir = normalize(-motionPixels + float2(EPSILON, EPSILON)); //negate for forward motion
-    float2 arrowTip = gridPixelPos + arrowDir * arrowLength;
+    float2 pixelPos  = uv * BUFFER_SCREEN_SIZE;
 
-    //shaft (stop before arrowhead starts)
-    float2 pixelPos = uv * BUFFER_SCREEN_SIZE;
-    float2 toPixel = pixelPos - gridPixelPos;
-    float proj = dot(toPixel, arrowDir);
-    float2 closestShaft = arrowDir * clamp(proj, 0, arrowLength - ARROWHEAD_LENGTH);
-    float distShaft = length(toPixel - closestShaft);
-    bool onShaft = (distShaft < ARROW_THICKNESS) && (proj > 0) && (proj < arrowLength - ARROWHEAD_LENGTH);
+    //dotted grid
+    float2 g       = pixelPos / GRID_SPACING;
+    float2 nearest = round(g) * GRID_SPACING;           //nearest node centre, px
+    float  dDot    = length(pixelPos - nearest);        //px distance to that node
+    float  gridCov = (1.0 - smoothstep(DOT_RADIUS - AA, DOT_RADIUS + AA, dDot)) * GRID_OPACITY;
 
-    //arrowhead wings: angled back from tip
-    float2 backDir = -arrowDir;
+    float  bestCov   = 0.0;
+    float3 bestColor = float3(0.0, 0.0, 0.0);
 
-    //left wing (rotate backDir by -WING_ANGLE)
-    float2 wingLeftDir = float2(
-        backDir.x * cos(WING_ANGLE) + backDir.y * sin(WING_ANGLE),
-        -backDir.x * sin(WING_ANGLE) + backDir.y * cos(WING_ANGLE)
-    );
+    //union of arrows from the (2*GATHER+1)^2 nearest nodes (roots on grid crossings)
+    float2 baseNode = round(g);
+    [unroll] for (int ny = -GATHER; ny <= GATHER; ny++)
+    [unroll] for (int nx = -GATHER; nx <= GATHER; nx++)
+    {
+        float2 rootPx   = (baseNode + float2(nx, ny)) * GRID_SPACING; //node sits on a crossing
+        float2 rootUV   = rootPx * BUFFER_PIXEL_SIZE;
 
-    //right wing (rotate backDir by +WING_ANGLE)
-    float2 wingRightDir = float2(
-        backDir.x * cos(WING_ANGLE) - backDir.y * sin(WING_ANGLE),
-        backDir.x * sin(WING_ANGLE) + backDir.y * cos(WING_ANGLE)
-    );
+        float2 motion   = tex2Dlod(sFlow, float4(rootUV, 0, 0)).xy;
+        float2 motionPx = motion * BUFFER_SCREEN_SIZE;
+        float  magPx    = length(motionPx);
+        bool   valid    = (magPx >= 0.4) && (tex2Dlod(sDepth, float4(rootUV, 0, 0)).r < 0.999);
 
-    //distance to left wing
-    float2 toTip = pixelPos - arrowTip;
-    float projLeft = dot(toTip, wingLeftDir);
-    float2 closestLeft = wingLeftDir * clamp(projLeft, 0, ARROWHEAD_LENGTH);
-    float distLeft = length(toTip - closestLeft);
-    bool onLeft = (distLeft < ARROW_THICKNESS) && (projLeft > 0) && (projLeft < ARROWHEAD_LENGTH);
+        float  len      = clamp(magPx * LENGTH_SCALE, MIN_LENGTH, MAX_LENGTH); //elongates with this node's motion
+        float2 fwd      = -motionPx / (magPx + EPSILON); //negate for forward motion
+        float2 tip      = rootPx + fwd * len;
+        float2 perp     = float2(-fwd.y, fwd.x);
 
-    //distance to right wing
-    float projRight = dot(toTip, wingRightDir);
-    float2 closestRight = wingRightDir * clamp(projRight, 0, ARROWHEAD_LENGTH);
-    float distRight = length(toTip - closestRight);
-    bool onRight = (distRight < ARROW_THICKNESS) && (projRight > 0) && (projRight < ARROWHEAD_LENGTH);
+        //shaft
+        float2 shaftEnd = rootPx + fwd * max(len - HEAD_LENGTH, 0.0);
+        float  dShaft   = SegmentDist(pixelPos, rootPx, shaftEnd);
+        float  covShaft = 1.0 - smoothstep(SHAFT_THICKNESS - AA, SHAFT_THICKNESS + AA, dShaft);
 
-    float3 arrowColor = MotionToColor(motion);
-    return float4((onShaft || onLeft || onRight) ? arrowColor : baseColor, 1.0);
+        //head
+        float2 toTip    = pixelPos - tip;
+        float  along    = dot(toTip, -fwd);
+        float  side     = abs(dot(toTip, perp));
+        float  halfW    = HEAD_HALF_WIDTH * saturate(along / HEAD_LENGTH);
+        float  covAlong = smoothstep(-AA, AA, along) * (1.0 - smoothstep(HEAD_LENGTH - AA, HEAD_LENGTH + AA, along));
+        float  covHead  = covAlong * (1.0 - smoothstep(halfW - AA, halfW + AA, side));
+
+        float  cov      = max(covShaft, covHead) * (valid ? 1.0 : 0.0);
+        if (cov > bestCov) { bestCov = cov; bestColor = MotionToColor(motion); }
+    }
+
+    float3 outColor = lerp(baseColor, GRID_TINT, gridCov); //lattice underneath
+    outColor        = lerp(outColor, bestColor, bestCov);  //arrows on top
+    return float4(outColor, 1.0);
 }
 
 float ZMSAD(sampler2D currLumaSrc, sampler2D prevLumaSrc, float2 posA, float2 posB, float2 texelSize, uint mip)
@@ -306,6 +323,9 @@ float2 BilateralMedian9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip
 
 float2 ATrousFilter(sampler2D motionSrc, float2 uv, uint dilation, uint mip)
 {
+    static const int2 offsets[8] = { int2(-1,-1), int2(0,-1), int2(1,-1),
+                                     int2(-1, 0),             int2(1, 0),
+                                     int2(-1, 1), int2(0, 1), int2(1, 1) };
     float2 cc = tex2Dlod(sChroma, float4(uv, 0, mip)).rg;
     float3 centerChroma = float3(cc, 1.0 - cc.r - cc.g); //rebuild b
     float centerDepth = tex2Dlod(sDepth, float4(uv, 0, mip)).r;
@@ -313,9 +333,8 @@ float2 ATrousFilter(sampler2D motionSrc, float2 uv, uint dilation, uint mip)
     float  centerConf = max(tex2Dlod(sConfidence, float4(uv, 0, 0)).r, 0.01); //0.01 floor prevents NaN if conf hits 0
     float2 sum = centerFlow * centerConf;
     float  totalWeight = centerConf;
-    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-        if (x == 0 && y == 0) continue;
-        float2 sampleUV     = uv + float2(x, y) * dilation * BUFFER_PIXEL_SIZE * 8.0; //*8 = stride of flow grid
+    [unroll] for (int i = 0; i < 8; i++) {
+        float2 sampleUV     = uv + float2(offsets[i]) * dilation * BUFFER_PIXEL_SIZE * 8.0; //*8 = stride of flow grid
         float2 sampleFlow   = tex2Dlod(motionSrc, float4(sampleUV, 0, 0)).xy;
 
         float  sampleConf   = tex2Dlod(sConfidence, float4(sampleUV, 0, 0)).r;
