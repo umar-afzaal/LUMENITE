@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Kernel.fx
-        Version    : 2026.06.03
+        Version    : 2026.06.06
         Author     : Afzaal (Kaidō)
         Description: Pre-effect for various LumeniteFX shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -39,6 +39,9 @@
 | :: HEADERS :: |
 '--------------*/
 #include "ReShade.fxh"
+#if DEBUG_KERNEL
+    #include "DrawText.fxh"
+#endif
 #include "./include/lumenite_Projections.fxh"
 #include "./include/lumenite_Helpers.fxh"
 #include "./include/lumenite_Compute.fxh"
@@ -49,7 +52,7 @@
 #if DEBUG_KERNEL
 uniform int DEBUG_VIEW <
     ui_type = "combo";
-    ui_items = "Debug Off\0"
+    ui_items = "Split View\0"
                "Normals/Depth\0"
                "Optical Flow\0"
                "Motion Vectors\0"
@@ -583,19 +586,15 @@ float PS_Confidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable while a high alpha (e.g 0.5) makes it react to changes quickly
 }
 
-float2 PS_StoreFlow(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+void PS_StoreFlow(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 flow : SV_Target0, out float confidence : SV_Target1)
 {
-    return tex2D(sFlow, uv).xy;
+    flow = tex2D(sFlow, uv).xy;
+    confidence = tex2D(sConfidence, uv).r;
 }
 
 float PS_StoreLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     return tex2D(sCurrLuma, uv).r;
-}
-
-float PS_StoreConfidence(float4 pos : SV_Position, float2 uv : TEXCOORD): SV_Target
-{
-    return tex2D(sConfidence, uv).r;
 }
 
 #if DEBUG_KERNEL
@@ -604,7 +603,69 @@ float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     float3 sceneColor = GetColor(uv);
     switch(DEBUG_VIEW)
     {
-        case 0: discard;
+        case 0: {
+            static const float  LINE_PX   = 1.5;                //divider half-width, px
+            static const float3 LINE_TINT = float3(0.0, 0.0, 0.0);
+            static const float2 BOX_HALF  = float2(0.16, 0.18); //centre inset half-extents, uv
+
+            float2 pixelPos  = uv * BUFFER_SCREEN_SIZE;
+            float2 centrePx  = BUFFER_SCREEN_SIZE * 0.5;
+            float2 boxHalfPx = BOX_HALF * BUFFER_SCREEN_SIZE;
+
+            //axis-aligned box distance
+            float2 dd     = abs(pixelPos - centrePx) - boxHalfPx;
+            float  boxSDF = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+
+            float3 view;
+            if (boxSDF < 0.0)
+            {
+                float2 boxUV = (uv - (0.5 - BOX_HALF)) / (2.0 * BOX_HALF); //full frame mapped into inset
+                view = DrawMotionVectors(boxUV).rgb;                       //centre: motion vectors
+            }
+            else
+            {
+                float2 quadUV = frac(uv * 2.0); //flow/confidence remap to full [0,1] frame
+                if (uv.y < 0.5)
+                    view = (uv.x < 0.5)
+                         ? tex2Dlod(sNormals, float4(uv, 0, 0)).rgb * 0.5 + 0.5     //TL: normals (spatial, raw uv)
+                         : DepthGradient(tex2Dlod(sDepth, float4(uv, 0, 0)).r, uv); //TR: depth (spatial, raw uv)
+                else if (uv.x < 0.5)
+                    view = MotionToColor(tex2Dlod(sFlow, float4(quadUV, 0, 0)).xy); //BL: optical flow field
+                else
+                {
+                    float  confidence      = tex2Dlod(sConfidence, float4(quadUV, 0, 0)).x; //BR: motion confidence field
+                    float3 confidenceColor = (confidence < 0.5)
+                        ? lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0)
+                        : lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
+                    view = lerp(GetColor(quadUV), confidenceColor, 0.9);
+                }
+
+                //black dividers
+                float dCross = min(abs(pixelPos.x - centrePx.x), abs(pixelPos.y - centrePx.y));
+                view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, dCross));
+            }
+
+            //centre inset border
+            view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, abs(boxSDF)));
+            //window labels
+            float2 texcoord  = uv;  //alias: the DrawText macro declares its own internal 'uv'
+            float  labelMask = 0.0;
+            float  labelSize = max(BUFFER_HEIGHT * 0.025, 12.0); //label height, px
+            int lblNormals[21]    = { __R, __e, __c, __o, __n, __s, __t, __r, __u, __c, __t, __e, __d, __Space, __N, __o, __r, __m, __a, __l, __s };
+            int lblDepth[16]      = { __L, __i, __n, __e, __a, __r, __i, __z, __e, __d, __Space, __D, __e, __p, __t, __h };
+            int lblFlow[10]       = { __F, __l, __o, __w, __Space, __F, __i, __e, __l, __d };
+            int lblConfidence[16] = { __C, __o, __n, __f, __i, __d, __e, __n, __c, __e, __Space, __F, __i, __e, __l, __d };
+            int lblVectors[14]    = { __M, __o, __t, __i, __o, __n, __Space, __V, __e, __c, __t, __o, __r, __s };
+
+            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 21.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblNormals,    21, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //TL  white
+            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblDepth,      16, labelMask); view = lerp(view, float3(0.55, 0.85, 1.00), saturate(labelMask)); //TR  blue
+            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 10.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblFlow,       10, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BL  white
+            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblConfidence, 16, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BR  white
+            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.50 - 14.0 * labelSize * 0.25, BUFFER_HEIGHT * (0.5 - BOX_HALF.y) + 8.0), labelSize, 1.0, texcoord, lblVectors,    14, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //centre  white
+
+            view = lerp(view, float3(1.0, 1.0, 1.0), saturate(labelMask)); //white labels
+            return float4(view, 1.0);
+        }
         case 1: {
             float4 gbuffer = tex2D(sNormals, uv);
             float3 normal = gbuffer.rgb;
@@ -643,31 +704,27 @@ technique Lumenite_Kernel <
 >
 {
     //normals
-    pass { VertexShader = VS; PixelShader = PS_ReconstructNormals;         RenderTarget0 = tNormals; RenderTarget1 = tDepth;    }
+    pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget0 = tNormals; RenderTarget1 = tDepth; }
 
     //optical flow
     pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget0 = tChroma;  RenderTarget1 = tCurrLuma; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow32;   RenderTarget  = tFlow32A;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass32;    RenderTarget  = tFlow32B;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow16;   RenderTarget  = tFlow16A;                            }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass16;    RenderTarget  = tFlow16B;                            }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow32;   RenderTarget  = tFlow32A; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass32;    RenderTarget  = tFlow32B; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow16;   RenderTarget  = tFlow16A; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass16;    RenderTarget  = tFlow16B; }
 
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow8;    RenderTarget  = tFlow;  }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8A;    RenderTarget  = tFlow8; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8B;    RenderTarget  = tFlow;  }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_Confidence;      RenderTarget  = tConfidence; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassA;     RenderTarget  = tFlow8; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassB;     RenderTarget  = tFlow;  }
 
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow8;    RenderTarget  = tFlow;                               }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8A;    RenderTarget  = tFlow8;                              }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8B;    RenderTarget  = tFlow;                               }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_Confidence;      RenderTarget  = tConfidence;                         }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassA;     RenderTarget  = tFlow8;                              }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassB;     RenderTarget  = tFlow;                               }
-
-
-
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow;       RenderTarget  = tPrevFrameFlow;                      }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreLuma;       RenderTarget  = tPrevLuma;                           }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreConfidence; RenderTarget  = tPrevConfidence;                     }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow; RenderTarget0 = tPrevFrameFlow; RenderTarget1 = tPrevConfidence; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_StoreLuma; RenderTarget  = tPrevLuma;                                       }
 
     //debug views
 #if DEBUG_KERNEL
