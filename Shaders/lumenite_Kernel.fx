@@ -580,10 +580,10 @@ float PS_Confidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     //current frame final confidence
     float currentConf = spatialConfidence * lengthConfidence * patternConf;
 
-    //stability filter/temporal hysteresis
+    //temporal filter
     float historyConf = tex2D(sPrevConfidence, prevUV).r;
 
-    return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable while a high alpha (e.g 0.5) makes it react to changes quickly
+    return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable, higher makes it react to changes quickly
 }
 
 void PS_StoreFlow(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 flow : SV_Target0, out float confidence : SV_Target1)
