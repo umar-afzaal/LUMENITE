@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_QuantAO.fx
-        Version    : 2026.06.07
+        Version    : 2026.06.09
         Author     : Afzaal (Kaidō)
         Description: Fast Ambient Occlusion (Screen Space).
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -380,7 +380,7 @@ float4 PS_ToDisplay(VSOUT input) : SV_Target
 | :: TECHNIQUE :: |
 '----------------*/
 technique Lumenite_QuantAO <
-    ui_label = "LUMENITE: Quant AO";
+    ui_label = "LUMENITE: QuantAO";
     ui_tooltip = "Fast Ambient Occlusion (Screen Space).";
 >
 {

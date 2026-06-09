@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_AnamorphicBloom.fx
-        Version    : 2026.05.17
+        Version    : 2026.06.09
         Author     : Afzaal (Kaidō)
         Description: Artistic bloom approximating the Anamorphic lens aesthetic.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -470,7 +470,7 @@ float4 PS_ToDisplay(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 | :: TECHNIQUE :: |
 '----------------*/
 technique Lumenite_AnamorphicBloom <
-    ui_label = "LUMENITE: Anamorphic Bloom";
+    ui_label = "LUMENITE: AnamorphicBloom";
     ui_tooltip = "Artistic bloom & Lens Flare approximating the Anamorphic lens aesthetic.";
 >
 {

@@ -583,7 +583,14 @@ float PS_Confidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     //temporal filter
     float historyConf = tex2D(sPrevConfidence, prevUV).r;
 
-    return lerp(historyConf, currentConf, 0.15); //low alpha makes conf. stable, higher makes it react to changes quickly
+    //DEPRECATED: linear EMA (a=0.15) 15% new + 85% history every frame
+    //unbiased (settles at the true mean), very stable but distrusts a real drop only as slowly as it trusts a rise
+    //return lerp(historyConf, currentConf, 0.15); //higher makes it react to changes quickly
+
+    //Asymmetric EMA; a=0.5 only on a genuine drop (>0.05 below history) fast distrust, else a reasonable a=0.1
+    //0.05 deadband keeps calm-region jitter on 0.1; only true occlusion/disocclusion bleeds confidence fast
+    float alpha = (currentConf < historyConf - 0.05) ? 0.5 : 0.1;
+    return lerp(historyConf, currentConf, alpha);
 }
 
 void PS_StoreFlow(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 flow : SV_Target0, out float confidence : SV_Target1)

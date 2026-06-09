@@ -17,7 +17,7 @@
 
 
         Filename   : QuantMotion.fx
-        Version    : 2026.06.06
+        Version    : 2026.06.09
         Author     : Afzaal (Kaidō)
         Description: Superfast motion vectors for low-end hardware.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -449,7 +449,7 @@ float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 | :: TECHNIQUE :: |
 '----------------*/
 technique Lumenite_QuantMotion <
-    ui_label = "LUMENITE: Quant Motion";
+    ui_label = "LUMENITE: QuantMotion";
     ui_tooltip = "Superfast motion vectors for ReShade.";
 >
 {

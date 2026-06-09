@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_LSAO.fx
-        Version    : 2026.05.30
+        Version    : 2026.06.09
         Author     : Afzaal (Kaidō)
         Description: Large-Scale Ray Traced Ambient Occlusion (Screen Space).
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -302,7 +302,7 @@ float2 PS_TemporalFilter(VSOUT input) : SV_Target
     float moment = ao * ao;
     float2 flow = tex2D(Kernel::sFlow, input.uv).xy;
     float confidence = tex2D(Kernel::sConfidence, input.uv).x;
-    confidence = saturate(confidence + log2(2.0 - confidence) * 0.55); //boost confidence
+    confidence = saturate(confidence + log2(2.0 - confidence) * 0.6); //boost confidence
     float2 rawHistory = tex2D(sPrevAO, input.uv + flow).rg; //history stores "1.0 - AO". 0.0 (Black Texture) -> Reads as 1.0 (White)
     float prevAO = 1.0 - rawHistory.r;
     float prevMoment = 1.0 - rawHistory.g;
