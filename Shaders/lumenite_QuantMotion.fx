@@ -17,7 +17,7 @@
 
 
         Filename   : QuantMotion.fx
-        Version    : 2026.06.09
+        Version    : 2026.06.16
         Author     : Afzaal (Kaidō)
         Description: Superfast motion vectors for low-end hardware.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -28,8 +28,6 @@
 /*------------------.
 | :: DEFINITIONS :: |
 '------------------*/
-#define FOV 60.0
-#define NEAR_PLANE 0.01
 #define EPSILON 1e-6
 
 #ifndef DEBUG_FLOW
@@ -44,19 +42,7 @@
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-uniform uint   FRAME_COUNT < source = "framecount"; >;
-
-#if DEBUG_FLOW
-uniform int DEBUG_VIEW <
-    ui_type = "combo";
-    ui_items = "Debug Off\0"
-               "Optical Flow Field\0"
-               "Flow Confidence Field\0"
-               ;
-    ui_label = "Debug View";
-    ui_category = "LumaFlow";
-> = 0;
-#endif
+uniform uint FRAME_COUNT < source = "framecount"; >;
 
 namespace QuantMotion {
 
@@ -386,28 +372,21 @@ float PS_Confidence(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     float2 flow = tex2D(sFlow, uv).xy;
     float2 prevUV = uv + flow; //warp prev frame forward
     if(IsOOB(prevUV)) return 0.0;
-
     float currLuma = tex2Dlod(sCurrLuma, float4(uv, 0, 3)).r;
     float prevLuma = tex2Dlod(sPrevLuma, float4(prevUV, 0, 3)).r;
     float lumaError = abs(currLuma - prevLuma);
-    if(lumaError > 0.1) //luma mismatch based disocclusion threshold
-        return 0.0; //no confidence in this motion vector
-
+    if(lumaError > 0.1) return 0.0; //no confidence
     float subpixelThreshold = length(BUFFER_PIXEL_SIZE);
     float flowMagnitude = length(flow);
-
-    if (flowMagnitude <= subpixelThreshold) return 1.0; //if flow itself is subpixel, full confidence
-
+    if (flowMagnitude <= subpixelThreshold) return 0.9; //if flow is subpixel, high confidence
     float motionPenalty = flowMagnitude / subpixelThreshold;
     float lengthConfidence = rcp(motionPenalty * 0.07 + 1.0);
     float photometricConfidence = exp(-lumaError * 8.0 * lengthConfidence);
-
     //current frame final confidence
     float currentConf = lengthConfidence * photometricConfidence;
-
     //temporal filter
     float historyConf = tex2D(sPrevConfidence, prevUV).r;
-    float alpha = (currentConf < historyConf) ? 0.5 : 0.1; //drop fast (kill speckles promptly), regain slowly (stay stable)
+    float alpha = (currentConf < historyConf - 0.05) ? 0.5 : 0.1; //drop fast (kill speckles promptly), regain slowly (stay stable)
     return lerp(historyConf, currentConf, alpha);
 }
 
@@ -425,23 +404,7 @@ float PS_StoreLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 #if DEBUG_FLOW
 float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
-    float3 sceneColor = GetColor(uv);
-    switch(DEBUG_VIEW)
-    {
-        case 0: discard;
-        case 1:  return float4(MotionToColor(tex2D(sFlow, uv).xy), 1);
-        case 2:
-        {
-            float confidence = tex2D(sConfidence, uv).x;
-            float3 confidenceColor;
-            if (confidence < 0.5)
-                confidenceColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0);
-            else
-                confidenceColor = lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
-            return float4(lerp(sceneColor, confidenceColor, 0.9), 1.0);
-        }
-        default: return float4(sceneColor, 1.0);
-    }
+    return float4(MotionToColor(tex2D(sFlow, uv).xy), 1);
 }
 #endif
 
