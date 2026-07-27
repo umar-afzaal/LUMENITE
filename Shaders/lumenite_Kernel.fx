@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Kernel.fx
-        Version    : 2026.06.06
+        Version    : 2026.07.28
         Author     : Afzaal (Kaidō)
         Description: Pre-effect for various LumeniteFX shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -30,6 +30,10 @@
 '------------------*/
 #define FOV 60.0
 #define NEAR_PLANE 0.01
+
+#ifndef IMAGE_SPACE
+    #define IMAGE_SPACE 0
+#endif
 
 #ifndef DEBUG_KERNEL
     #define DEBUG_KERNEL 0
@@ -49,6 +53,14 @@
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
+#if IMAGE_SPACE == 0
+uniform int SHOW_STATUS <
+    ui_type = "radio";
+    ui_label = " ";
+    ui_text = "Depth Buffer: Required!";
+>;
+#endif
+
 #if DEBUG_KERNEL
 uniform int DEBUG_VIEW <
     ui_type = "combo";
@@ -86,9 +98,6 @@ sampler2D sCurrLuma { Texture = tCurrLuma; MagFilter = LINEAR; MinFilter = LINEA
 
 texture2D tPrevLuma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 8; };
 sampler2D sPrevLuma { Texture = tPrevLuma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
-
-texture2D tChroma { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RG16F; MipLevels = 4; };
-sampler2D sChroma { Texture = tChroma; MagFilter = LINEAR; MinFilter = LINEAR; MipFilter = LINEAR; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
 
 texture2D tFlow128 { Width = BUFFER_WIDTH/128; Height = BUFFER_HEIGHT/128; Format = RG16F; };
 sampler2D sFlow128 { Texture = tFlow128; MagFilter = POINT; MinFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; AddressW = CLAMP; };
@@ -284,11 +293,11 @@ float2 BilateralMedian9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip
         int2(-1, 0), int2(0, 0), int2(1, 0),
         int2(-1, 1), int2(0, 1), int2(1, 1)
     };
-    float lumaC = tex2Dlod(sCurrLuma, float4(uv,                                       0, 0)).x;
-    float lumaW = tex2Dlod(sCurrLuma, float4(uv + float2(-1.0, 0.0) * texelSize,        0, 0)).x;
-    float lumaE = tex2Dlod(sCurrLuma, float4(uv + float2( 1.0, 0.0) * texelSize,        0, 0)).x;
-    float lumaN = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0,-1.0) * texelSize,        0, 0)).x;
-    float lumaS = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0, 1.0) * texelSize,        0, 0)).x;
+    float lumaC = tex2Dlod(sCurrLuma, float4(uv,                                 0, mip)).x;
+    float lumaW = tex2Dlod(sCurrLuma, float4(uv + float2(-1.0, 0.0) * texelSize, 0, mip)).x;
+    float lumaE = tex2Dlod(sCurrLuma, float4(uv + float2( 1.0, 0.0) * texelSize, 0, mip)).x;
+    float lumaN = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0,-1.0) * texelSize, 0, mip)).x;
+    float lumaS = tex2Dlod(sCurrLuma, float4(uv + float2( 0.0, 1.0) * texelSize, 0, mip)).x;
     //central-difference gradient, wider baseline than quad ddx/ddy, derived from real samples
     float dxLuma = (lumaE - lumaW) * 0.5;
     float dyLuma = (lumaS - lumaN) * 0.5;
@@ -305,7 +314,7 @@ float2 BilateralMedian9(sampler2D flowSrc, float2 uv, float2 texelSize, uint mip
         else if (off.x ==  0 && off.y ==  1) sampleLuma = lumaS;
         else if (off.x != 0 && off.y != 0)   sampleLuma = lumaC + float(off.x) * dxLuma + float(off.y) * dyLuma;
         bool isValid = abs(lumaC - sampleLuma) <= 0.05;
-        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, mip)).xy : float2(1e38, 1e38);
+        v[i] = isValid ? tex2Dlod(flowSrc, float4(sampleUV, 0, 0)).xy : float2(1e38, 1e38);
         validCount += uint(isValid);
     }
     if(validCount < 3u) return v[4];
@@ -329,9 +338,10 @@ float2 ATrousFilter(sampler2D motionSrc, float2 uv, uint dilation, uint mip)
     static const int2 offsets[8] = { int2(-1,-1), int2(0,-1), int2(1,-1),
                                      int2(-1, 0),             int2(1, 0),
                                      int2(-1, 1), int2(0, 1), int2(1, 1) };
-    float2 cc = tex2Dlod(sChroma, float4(uv, 0, mip)).rg;
-    float3 centerChroma = float3(cc, 1.0 - cc.r - cc.g); //rebuild b
-    float centerDepth = tex2Dlod(sDepth, float4(uv, 0, mip)).r;
+    float centerLuma  = tex2Dlod(sCurrLuma, float4(uv, 0, mip)).r;
+    #if IMAGE_SPACE == 0
+        float centerDepth = tex2Dlod(sDepth, float4(uv, 0, mip)).r;
+    #endif
     float2 centerFlow = tex2Dlod(motionSrc, float4(uv, 0, 0)).xy;
     float  centerConf = max(tex2Dlod(sConfidence, float4(uv, 0, 0)).r, 0.01); //0.01 floor prevents NaN if conf hits 0
     float2 sum = centerFlow * centerConf;
@@ -343,16 +353,24 @@ float2 ATrousFilter(sampler2D motionSrc, float2 uv, uint dilation, uint mip)
         float  sampleConf   = tex2Dlod(sConfidence, float4(sampleUV, 0, 0)).r;
         float  confWeight   = pow(sampleConf, 3.0);
 
-        float  sampleDepth  = tex2Dlod(sDepth, float4(sampleUV, 0, mip)).r;
-        float absDepthDiff  = abs(centerDepth - sampleDepth);
-        float depthWeight   = (absDepthDiff < 0.003) ? 1.0 : 0.0;
+        float discontinuityGate;
+        #if IMAGE_SPACE == 0
+            float  sampleDepth  = tex2Dlod(sDepth, float4(sampleUV, 0, mip)).r;
+            float absDepthDiff  = abs(centerDepth - sampleDepth);
+            float depthWeight   = (absDepthDiff < 0.003) ? 1.0 : 0.0;
+            discontinuityGate = depthWeight;
+        #else
+            float2 flowDeltaPx = (sampleFlow - centerFlow) * BUFFER_SCREEN_SIZE; //measure flow disagreement in full-res px
+            float rawMotionGate = exp2(-dot(flowDeltaPx, flowDeltaPx) / (0.01 + EPSILON));
+            float motionGate = lerp(1.0, rawMotionGate, saturate(centerConf)); //if center flow is unreliable; relax gate so confident neighbors repair it
+            discontinuityGate = motionGate;
+        #endif
 
-        float2 sc           = tex2Dlod(sChroma, float4(sampleUV, 0, mip)).rg;
-        float3 sampleChroma = float3(sc, 1.0 - sc.r - sc.g); //rebuild b
-        float chromaDiff    = distance(centerChroma, sampleChroma);
-        float chromaWeight  = pow(saturate(1.0 - chromaDiff * 3.0), 6.0); //3.0: scale, 6.0: sharpness
+        float  sampleLuma   = tex2Dlod(sCurrLuma, float4(sampleUV, 0, mip)).r;
+        float absLumaDiff   = abs(centerLuma - sampleLuma);
+        float lumaWeight    = saturate(1.0 - absLumaDiff * 10.0); //10.0: scale, 4.0: sharpness
 
-        float weight        = confWeight * depthWeight * chromaWeight;
+        float weight        = confWeight * lumaWeight * discontinuityGate;
         sum                += sampleFlow * weight;
         totalWeight        += weight;
     }
@@ -434,12 +452,11 @@ void PS_ReconstructNormals(VSOUT input, out float4 gbuffer : SV_Target0, out flo
     gbuffer = float4(geoNormal, depthC);
 }
 
-void PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD, out float2 chroma : SV_Target0, out float luma : SV_Target1)
+float PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
     float3 color = GetColor(uv);
-    chroma = color.rg * rcp(dot(color, float3(1.0, 1.0, 1.0)) + EPSILON); //rg-chromaticity
-    luma = dot(color, float3(0.2126, 0.7152, 0.0722));
-    luma = luma * rcp(1.0 + luma);
+    float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
+    return luma * rcp(1.0 + luma);
 }
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
@@ -711,10 +728,12 @@ technique Lumenite_Kernel <
 >
 {
     //normals
-    pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget0 = tNormals; RenderTarget1 = tDepth; }
+    #if IMAGE_SPACE == 0
+        pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget0 = tNormals; RenderTarget1 = tDepth; }
+    #endif
 
     //optical flow
-    pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget0 = tChroma;  RenderTarget1 = tCurrLuma; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget  = tCurrLuma; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B; }
