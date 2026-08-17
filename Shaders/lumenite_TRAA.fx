@@ -118,7 +118,7 @@ namespace LumeniteTRAA {
 | :: RENDER TARGETS :: |
 '---------------------*/
 #if ENABLE_DLAA
-texture tDLAAPreFilter { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA8; };
+texture tDLAAPreFilter { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sDLAAPreFilter { Texture = tDLAAPreFilter; MinFilter = LINEAR; MagFilter = LINEAR; MipFilter = LINEAR; };
 
 texture tDLAAPrePass { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
