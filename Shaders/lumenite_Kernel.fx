@@ -53,14 +53,6 @@
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
-#if IMAGE_SPACE == 0
-uniform int SHOW_STATUS <
-    ui_type = "radio";
-    ui_label = " ";
-    ui_text = "Depth Buffer: Required!";
->;
-#endif
-
 #if DEBUG_KERNEL
 uniform int DEBUG_VIEW <
     ui_type = "combo";
