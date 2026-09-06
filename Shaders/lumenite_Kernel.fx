@@ -78,7 +78,7 @@
         uniform float LUMA_DETAIL <
             ui_type = "drag";
             ui_min = -2.0; ui_max = 2.0;
-            ui_label = "Texture Relief";
+            ui_label = "Surface Relief";
             ui_tooltip = "How much texture gets carved into smoothed normals. sign inverts the relief.";
         > = 0.0;
 

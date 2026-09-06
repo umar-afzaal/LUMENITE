@@ -47,14 +47,17 @@ This file notes the attributions and acknowledgments for the ReShade LumeniteFX 
         """
 
 [ATTRIBUTION]
-    - The downsampling and upsampling pyramid strategy, and the TentFilter kernel
-      weights in AnamorphicBloom.fx were derived from "HDR bloom" by Anton Matrosov
-      licensed under the MIT license. (https://www.linkedin.com/in/antonmatrosov/)
-    - Project link: https://playcanvas.com/project/1091979
+    - The mip-chain downsample/upsample pyramid, and the isotropic 13-tap/9-tap tent
+      filter weights, were derived from "HDR bloom" by Anton Matrosov licensed under the
+      MIT license. (https://www.linkedin.com/in/antonmatrosov/). Everything built on that
+      base: anisotropic stretch for the anamorphic shape, the BLOOM_SHARP kernel variant,
+      luminance thresholding, RGB chromatic fringing, and the anamorphic streak pyramid is
+      original to this shader.
+    - Anton's project is hosted at: https://playcanvas.com/project/1091979
 
 [ATTRIBUTION]
     The Blue Noise texture "Textures/lumenite_bluenoise256.png" is courtesy of Alan Wolfe,
-    and obtained from the blog hosted at: https://blog.demofox.org/2018/08/07/tiled-blue-noise/
+    and obtained from: https://blog.demofox.org/2018/08/07/tiled-blue-noise/
     A copy of the MIT license covering this blog’s content is attached herewith.
         """
         MIT License
