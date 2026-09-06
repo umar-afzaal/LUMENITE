@@ -6,7 +6,8 @@ Questions, comments or need to contact support? Join the Lumenite discord: https
 Pre-effect for other LumeniteFX shaders. Computes normals, motion vectors, motion confidence, etc. once and populates the textures for subsequent use.
 
 Shaders that support Kernel:
-- JakobPCoder's [TFAA: Temporal Filter AntiAliasing](https://github.com/JakobPCoder/Reshade-Shades/blob/main/Shaders/Shades/TFAA.fx)
+- JakobPCoder's [TFAA: Temporal Filter AntiAliasing](https://github.com/JakobPCoder/Reshade-Shades/)
+- Barbatos Bachiko's [BaBa Shader Repo](https://github.com/BarbatosBachiko/Reshade-Shaders/)
 
 ## RTAO/LSAO - Ray Traced Ambient Occlusion
 ![RTAO poster](https://github.com/umar-afzaal/asset-repo/blob/mainline/lumenitefx/RTAO_poster.jpg)

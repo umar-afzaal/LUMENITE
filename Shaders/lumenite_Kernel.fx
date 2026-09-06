@@ -17,7 +17,7 @@
 
 
         Filename   : lumenite_Kernel.fx
-        Version    : 2026.07.28
+        Version    : 2026.09.06
         Author     : Afzaal (Kaidō)
         Description: Pre-effect for various LumeniteFX shaders.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -39,13 +39,19 @@
     #define DEBUG_KERNEL 0
 #endif
 
+#ifndef SMOOTH_NORMALS
+    #define SMOOTH_NORMALS 0
+#endif
+
+#define RES_SCALE ((BUFFER_HEIGHT) / 2160.0) //DO NOT modify this
+
 /*--------------.
 | :: HEADERS :: |
 '--------------*/
 #include "ReShade.fxh"
-#if DEBUG_KERNEL
-    #include "DrawText.fxh"
-#endif
+// #if DEBUG_KERNEL
+//     #include "DrawText.fxh"
+// #endif
 #include "./include/lumenite_Projections.fxh"
 #include "./include/lumenite_Helpers.fxh"
 #include "./include/lumenite_Compute.fxh"
@@ -54,17 +60,35 @@
 | :: UNIFORMS :: |
 '---------------*/
 #if DEBUG_KERNEL
-uniform int DEBUG_VIEW <
-    ui_type = "combo";
-    ui_items = "Split View\0"
-               "Normals/Depth\0"
-               "Optical Flow\0"
-               "Motion Vectors\0"
-               "Motion Confidence\0"
-               ;
-    ui_label = "Debug View";
-    ui_category = "Kernel";
-> = 0;
+    uniform int DEBUG_VIEW <
+        ui_type = "combo";
+        ui_items = "Split View\0"
+                   "Normals/Depth\0"
+                   "Optical Flow\0"
+                   "Motion Vectors\0"
+                   "Motion Confidence\0"
+                   ;
+        ui_label = "Debug View";
+        ui_category = "Kernel";
+    > = 0;
+#endif
+
+#if IMAGE_SPACE == 0
+    #if SMOOTH_NORMALS
+        uniform float LUMA_DETAIL <
+            ui_type = "drag";
+            ui_min = -2.0; ui_max = 2.0;
+            ui_label = "Texture Relief";
+            ui_tooltip = "How much texture gets carved into smoothed normals. sign inverts the relief.";
+        > = 0.0;
+
+        uniform int LUMA_DETAIL_LOD <
+            ui_type = "slider";
+            ui_min = 0; ui_max = 4; ui_step = 1;
+            ui_label = "Texture LOD";
+            ui_tooltip = "1 = finest carving, 2 = fine relief, 4 = broad folds";
+        > = 2;
+    #endif
 #endif
 
 namespace Kernel {
@@ -81,6 +105,20 @@ sampler2D sConfidence { Texture = tConfidence; };
 
 texture tNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
 sampler sNormals { Texture = tNormals; };
+
+#if IMAGE_SPACE == 0
+    #if SMOOTH_NORMALS
+        texture tGuideNormals { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+        sampler sGuideNormals { Texture = tGuideNormals; };
+
+        texture texHRAN_H0 { Width = BUFFER_WIDTH/2; Height = BUFFER_HEIGHT/2; Format = RGBA16F; };
+        sampler sHRAN_H0   { Texture = texHRAN_H0; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+        texture texHRAN_HA { Width = BUFFER_WIDTH/2; Height = BUFFER_HEIGHT/2; Format = RGBA16F; };
+        sampler sHRAN_HA   { Texture = texHRAN_HA; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+        texture texHRAN_HB { Width = BUFFER_WIDTH/2; Height = BUFFER_HEIGHT/2; Format = RGBA16F; };
+        sampler sHRAN_HB   { Texture = texHRAN_HB; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+    #endif
+#endif
 
 texture2D tDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 4; };
 sampler2D sDepth { Texture = tDepth; };
@@ -415,34 +453,6 @@ float2 UpscaleFlow(sampler2D coarseSrc, sampler2D currLumaSrc, sampler2D prevLum
 /*--------------.
 | :: SHADERS :: |
 '--------------*/
-void PS_ReconstructNormals(VSOUT input, out float4 gbuffer : SV_Target0, out float depthC : SV_Target1)
-{
-    depthC = GetDepth(input.uv);
-
-    const float2 offsetX = float2(BUFFER_PIXEL_SIZE.x, 0);
-    const float2 offsetY = float2(0, BUFFER_PIXEL_SIZE.y);
-
-    float3 pC = UVToViewSpace(input.uv, depthC, input);
-    float3 pL = UVToViewSpace(input.uv - offsetX, GetDepth(input.uv - offsetX), input);
-    float3 pR = UVToViewSpace(input.uv + offsetX, GetDepth(input.uv + offsetX), input);
-    float3 pT = UVToViewSpace(input.uv - offsetY, GetDepth(input.uv - offsetY), input);
-    float3 pB = UVToViewSpace(input.uv + offsetY, GetDepth(input.uv + offsetY), input);
-
-    float3 diffX2 = pR - pC;
-    float3 diffX1 = pC - pL;
-    float3 diffY2 = pB - pC;
-    float3 diffY1 = pC - pT;
-
-    float lenSqX2 = dot(diffX2, diffX2);
-    float lenSqX1 = dot(diffX1, diffX1);
-    float lenSqY2 = dot(diffY2, diffY2);
-    float lenSqY1 = dot(diffY1, diffY1);
-
-    float3 ddx = lenSqX2 < lenSqX1 ? diffX2 : diffX1;
-    float3 ddy = lenSqY2 < lenSqY1 ? diffY2 : diffY1;
-    float3 geoNormal = normalize(cross(ddx, ddy));
-    gbuffer = float4(geoNormal, depthC);
-}
 
 float PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -450,6 +460,225 @@ float PS_PackFeatures(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
     float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
     return luma * rcp(1.0 + luma);
 }
+
+#if IMAGE_SPACE == 0
+    void PS_ReconstructNormals(VSOUT input, out float4 gbuffer : SV_Target0, out float depthC : SV_Target1)
+    {
+        depthC = GetDepth(input.uv);
+
+        const float2 offsetX = float2(BUFFER_PIXEL_SIZE.x, 0);
+        const float2 offsetY = float2(0, BUFFER_PIXEL_SIZE.y);
+
+        float3 pC = UVToViewSpace(input.uv, depthC, input);
+        float3 pL = UVToViewSpace(input.uv - offsetX, GetDepth(input.uv - offsetX), input);
+        float3 pR = UVToViewSpace(input.uv + offsetX, GetDepth(input.uv + offsetX), input);
+        float3 pT = UVToViewSpace(input.uv - offsetY, GetDepth(input.uv - offsetY), input);
+        float3 pB = UVToViewSpace(input.uv + offsetY, GetDepth(input.uv + offsetY), input);
+
+        float3 diffX2 = pR - pC;
+        float3 diffX1 = pC - pL;
+        float3 diffY2 = pB - pC;
+        float3 diffY1 = pC - pT;
+
+        float lenSqX2 = dot(diffX2, diffX2);
+        float lenSqX1 = dot(diffX1, diffX1);
+        float lenSqY2 = dot(diffY2, diffY2);
+        float lenSqY1 = dot(diffY1, diffY1);
+
+        float3 ddx = lenSqX2 < lenSqX1 ? diffX2 : diffX1;
+        float3 ddy = lenSqY2 < lenSqY1 ? diffY2 : diffY1;
+        float3 geoNormal = normalize(cross(ddx, ddy));
+        gbuffer = float4(geoNormal, depthC);
+    }
+
+    #if SMOOTH_NORMALS
+        static const float2 HRAN_SIZE = float2(BUFFER_WIDTH/2, BUFFER_HEIGHT/2);
+        static const float2 HRAN_PX = float2(2.0, 2.0) / float2(BUFFER_WIDTH, BUFFER_HEIGHT);
+        static const float  HRAN_TOL_SLOPE = 0.005 / RES_SCALE;
+        static const float  HRAN_TOL_FLOOR = 0.00005 / RES_SCALE;
+        static const float  CURV_LO = 0.0;
+        static const float  CURV_HI = 0.475;
+        static const float  MERGE_CENTER_WEIGHT = 1.0;
+        static const float  CURV_OPEN_WINDOW = 1.3333333;
+        static const float  COHERENCE_LO = 0.86;
+        static const float  COHERENCE_HI = 0.85;
+        static const float  STRIDE_NEAR_REF = 0.12 * RES_SCALE;
+        static const float  STRIDE_MAX = 24.0 * RES_SCALE;
+        static const float  DETAIL_GAIN = 1.25 * RES_SCALE;
+        static const float  DEPTH_TOL_SLOPE = 0.005;
+
+        float4 PS_HRAN_Half(VSOUT input) : SV_Target
+        {
+            float2 hc  = floor(input.uv * HRAN_SIZE);
+            float2 uvC = (hc * 2.0 + 0.5) * BUFFER_PIXEL_SIZE;
+            float  zC  = GetDepth(uvC);
+            if (zC >= 0.999) return float4(0.0, 0.0, -1.0, zC); //sky
+
+            float  b = clamp(STRIDE_NEAR_REF * rcp(max(zC, 1e-5)), RES_SCALE, STRIDE_MAX) * 2.0; //half-px -> full px
+            //border guard
+            float2 pxPos = uvC * BUFFER_SCREEN_SIZE;
+            float  bx = max(min(floor(b + 0.5), min(pxPos.x, BUFFER_SCREEN_SIZE.x - 1.0 - pxPos.x)), 1.0);
+            float  by = max(min(floor(b + 0.5), min(pxPos.y, BUFFER_SCREEN_SIZE.y - 1.0 - pxPos.y)), 1.0);
+            float2 offX = float2(bx, 0.0) * BUFFER_PIXEL_SIZE.x;
+            float2 offY = float2(0.0, by) * BUFFER_PIXEL_SIZE.y;
+
+            float3 pC = UVToViewSpace(uvC,        zC,                  input);
+            float3 pL = UVToViewSpace(uvC - offX, GetDepth(uvC - offX), input);
+            float3 pR = UVToViewSpace(uvC + offX, GetDepth(uvC + offX), input);
+            float3 pT = UVToViewSpace(uvC - offY, GetDepth(uvC - offY), input);
+            float3 pB = UVToViewSpace(uvC + offY, GetDepth(uvC + offY), input);
+
+            //best-fit selection
+            float3 dX2 = pR - pC, dX1 = pC - pL;
+            float3 dY2 = pB - pC, dY1 = pC - pT;
+            float3 ddxV = dot(dX2, dX2) < dot(dX1, dX1) ? dX2 : dX1;
+            float3 ddyV = dot(dY2, dY2) < dot(dY1, dY1) ? dY2 : dY1;
+
+            float3 n = cross(ddxV, ddyV);
+            n *= rsqrt(max(dot(n, n), 1e-30)); //scale-safe normalize
+
+            return float4(n, zC);
+        }
+
+        float4 ATrousNormalsH(sampler2D gbufferSrc, float2 uv, uint dilation)
+        {
+            static const int2 offsets[4] = {              int2(0,-1),
+                                             int2(-1, 0),             int2(1, 0),
+                                                          int2(0, 1) };
+
+            float4 centerGeo = tex2Dlod(gbufferSrc, float4(uv, 0, 0));
+            float  detail = saturate(dot(fwidth(centerGeo.rgb), float3(1,1,1)) * DETAIL_GAIN); //0 = facet interior/flat, 1 = dense variation
+            if (centerGeo.a >= 0.999) return centerGeo; //sky/far
+            float  strideScale = clamp(STRIDE_NEAR_REF * exp2(-detail) / max(centerGeo.a, 1e-5), RES_SCALE, STRIDE_MAX); //world-locked footprint
+            float  ringR = dilation * strideScale; //hoist: shared by rotation gate and every tap
+            float  rotAng  = (ringR > 1.5) ? frac(GetStratifiedNoise(uv * HRAN_SIZE).x + float(dilation) * 0.6180339887) * 1.5707963268 : 0.0; //rotate cross: scrambles band phase into grain the next pass averages away
+            float  rotS, rotC; sincos(rotAng, rotS, rotC);
+            float  invDepthTol = 1.0 / (centerGeo.a * DEPTH_TOL_SLOPE * sqrt(strideScale / RES_SCALE) + EPSILON); //slope term ~ z*sqrt(stride) covers curvature headroom
+            float  invDepthTolL2 = invDepthTol * 1.4426950408; //log2(e) prefold: exp(-x)==exp2(-x*log2e)
+            float3 armSum      = 0.0; //arms accumulate FIRST; the centre's weight is decided after,
+            float  armWeight   = 0.0; //once we know how many of them actually survived the gates
+            float4 geo[4];
+            [unroll] for (int i = 0; i < 2; i++) {
+                float2 offIdeal = float2(offsets[i]) * ringR; //full-res grid stride, depth-adaptive
+                float2 offPx    = float2(offIdeal.x * rotC - offIdeal.y * rotS, offIdeal.x * rotS + offIdeal.y * rotC);
+                offPx           = floor(offPx + 0.5); //texel snap
+                //border guard: scale the MIRRORED pair down so both taps stay on the half grid
+                float2 hcPos = uv * HRAN_SIZE;
+                float2 avail = max(min(hcPos, HRAN_SIZE - 1.0 - hcPos), 0.0);
+                float  bsc   = min(1.0, min(avail.x / max(abs(offPx.x), 1e-3), avail.y / max(abs(offPx.y), 1e-3)));
+                offPx        = floor(offPx * bsc + 0.5);
+                float2 sampleUV = uv + offPx * HRAN_PX;
+                geo[i]     = tex2Dlod(gbufferSrc, float4(sampleUV, 0, 0)); //one fetch = signal + both guides
+                geo[3 - i] = tex2Dlod(gbufferSrc, float4(uv - offPx * HRAN_PX, 0, 0)); //mirrored partner, same snapped offset
+            }
+
+            //curvature consistency
+            float3 d2x = geo[1].rgb + geo[2].rgb - 2.0 * centerGeo.rgb;
+            float3 d2y = geo[0].rgb + geo[3].rgb - 2.0 * centerGeo.rgb;
+            float  curv = (length(d2x) + length(d2y)) * 0.5;
+            bool   ringValid = (geo[0].a < 0.999) && (geo[1].a < 0.999) && (geo[2].a < 0.999) && (geo[3].a < 0.999);
+            float  curvGate  = ringValid ? (1.0 - smoothstep(CURV_LO, CURV_HI, curv)) : 0.0;
+            float  tapWindow = lerp(1.3333333, CURV_OPEN_WINDOW, curvGate);
+            //planar depth prediction
+            float dzdxF = geo[2].a - centerGeo.a, dzdxB = centerGeo.a - geo[1].a; //E-C, C-W
+            float dzdyF = geo[3].a - centerGeo.a, dzdyB = centerGeo.a - geo[0].a; //S-C, C-N
+            float dzdx  = abs(dzdxF) < abs(dzdxB) ? dzdxF : dzdxB;
+            float dzdy  = abs(dzdyF) < abs(dzdyB) ? dzdyF : dzdyB;
+            float gradCap = 6.0 / invDepthTol;
+            dzdx = clamp(dzdx, -gradCap, gradCap);
+            dzdy = clamp(dzdy, -gradCap, gradCap);
+            [unroll] for (int i = 0; i < 4; i++) {
+                float4 sampleGeo    = geo[i];
+                float  planeResid   = sampleGeo.a - (centerGeo.a + dzdx * float(offsets[i].x) + dzdy * float(offsets[i].y));
+                float  depthWeight  = exp2(-abs(planeResid) * invDepthTolL2); //point-to-plane: slanted floors and gentle kinks pass, depth discontinuities fail
+                float  nAlign       = saturate(dot(centerGeo.rgb, sampleGeo.rgb));
+                float  normalWeight = saturate(nAlign * tapWindow - (tapWindow - 1.0)); //angular window
+                float  weight       = depthWeight * normalWeight * 2.0; //uniform arm weight
+                weight              = sampleGeo.a >= 0.999 ? 0.0 : weight; //skip skylines
+                armSum             += sampleGeo.rgb * weight;
+                armWeight          += weight;
+            }
+
+            //adaptive center weight to the flicker on small geometry
+            float  armConf     = saturate(armWeight * 0.125); //8.0 = four arms x 2.0 max
+            float  centerW     = lerp(4.0, MERGE_CENTER_WEIGHT, armConf);
+            float3 sum         = centerGeo.rgb * centerW + armSum;
+            float  totalWeight = centerW + armWeight;
+
+            float  filteredLen = length(sum);
+            float3 mergedDir   = (filteredLen > EPSILON) ? sum / filteredLen : centerGeo.rgb;
+
+            //coherence gate
+            float coherence     = filteredLen / max(totalWeight, EPSILON);
+            float coherenceGate = smoothstep(COHERENCE_LO, COHERENCE_HI, coherence);
+
+            float mergeStrength = max(coherenceGate, curvGate);
+            float3 filtered    = normalize(lerp(centerGeo.rgb, mergedDir, mergeStrength));
+
+            return float4(filtered, centerGeo.a); //depth rides through untouched
+        }
+
+        float4 PS_HRAN_A(float4 vp : SV_Position, float2 uv : TEXCOORD) : SV_Target { return ATrousNormalsH(sHRAN_H0, uv, 2); }
+        float4 PS_HRAN_B(float4 vp : SV_Position, float2 uv : TEXCOORD) : SV_Target { return ATrousNormalsH(sHRAN_HA, uv, 4); }
+        float4 PS_HRAN_C(float4 vp : SV_Position, float2 uv : TEXCOORD) : SV_Target { return ATrousNormalsH(sHRAN_HB, uv, 8); }
+
+        float4 PS_HRAN_Up(float4 vp : SV_Position, float2 uv : TEXCOORD) : SV_Target
+        {   //joint-bilateral upsample
+            float4 g = tex2Dlod(sGuideNormals, float4(uv, 0, 0));
+            if (g.a >= 0.999) return g; //sky/far
+            //center-relative one-sided guide slopes at FULL res (min-mag guard: silhouette on one side can't poison the other)
+            float zE = tex2Dlod(sGuideNormals, float4(uv + float2(BUFFER_PIXEL_SIZE.x, 0), 0, 0)).a;
+            float zW = tex2Dlod(sGuideNormals, float4(uv - float2(BUFFER_PIXEL_SIZE.x, 0), 0, 0)).a;
+            float zS = tex2Dlod(sGuideNormals, float4(uv + float2(0, BUFFER_PIXEL_SIZE.y), 0, 0)).a;
+            float zN = tex2Dlod(sGuideNormals, float4(uv - float2(0, BUFFER_PIXEL_SIZE.y), 0, 0)).a;
+            float dxF = zE - g.a, dxB = g.a - zW;
+            float dzdx = abs(dxF) < abs(dxB) ? dxF : dxB;
+            float dyF = zS - g.a, dyB = g.a - zN;
+            float dzdy = abs(dyF) < abs(dyB) ? dyF : dyB;
+            float invTol   = 1.0 / (g.a * HRAN_TOL_SLOPE + HRAN_TOL_FLOOR); //span ~1-2 full px -> no stride coupling needed
+            float invTolL2 = invTol * 1.4426950408; //log2(e) prefold
+            float gradCap  = 3.0 / invTol; //cut-poisoned-fit cap, same job as always
+            dzdx = clamp(dzdx, -gradCap, gradCap);
+            dzdy = clamp(dzdy, -gradCap, gradCap);
+            float2 hc   = uv * HRAN_SIZE - 0.5;
+            float2 hb   = min(max(floor(hc), 0.0), HRAN_SIZE - 2.0); //border guard: the 2x2 always reads real texels
+            float2 fr   = hc - hb;
+            float2 frw  = smoothstep(0.0, 1.0, fr);
+            float2 base = (hb + 0.5) * HRAN_PX;
+            float3 nsum = 0.0;  float ws = 0.0;
+            [unroll] for (int j = 0; j < 2; j++)
+            [unroll] for (int i = 0; i < 2; i++) {
+                float4 hg    = tex2Dlod(sHRAN_HA, float4(base + float2(i, j) * HRAN_PX, 0, 0));
+                float2 dFull = 2.0 * (float2(i, j) - fr); //tap offset in FULL-res px (one half-px = two full-px)
+                float  resid = hg.a - (g.a + dzdx * dFull.x + dzdy * dFull.y); //point-to-plane vs the pristine full-res guide
+                float  bi    = (i == 0 ? 1.0 - frw.x : frw.x) * (j == 0 ? 1.0 - frw.y : frw.y);
+                float  w     = exp2(-abs(resid) * invTolL2) * saturate(saturate(dot(g.rgb, hg.rgb)) * 1.3333333 - 0.3333333) * bi; //75deg window
+                w            = hg.a >= 0.999 ? 0.0 : w;
+                nsum        += hg.rgb * w;  ws += w;
+            }
+            if (ws < 1e-4) return g; //never blend on the wrong-side, let raw normal through, unsmoothed but correct here
+            float3 n = nsum / ws;  float len = length(n);
+            float3 outN = (len > EPSILON) ? n / len : g.rgb;
+
+            //luma micro-relief
+            [branch] if (abs(LUMA_DETAIL) > 1e-4)
+            {
+                float  lodEff = LUMA_DETAIL_LOD + log2(RES_SCALE);
+                float  lodPx = exp2(lodEff);
+                float2 lr    = BUFFER_PIXEL_SIZE * lodPx;
+                float lE = tex2Dlod(sCurrLuma, float4(uv + float2(lr.x, 0), 0, lodEff)).r;
+                float lW = tex2Dlod(sCurrLuma, float4(uv - float2(lr.x, 0), 0, lodEff)).r;
+                float lS = tex2Dlod(sCurrLuma, float4(uv + float2(0, lr.y), 0, lodEff)).r;
+                float lN = tex2Dlod(sCurrLuma, float4(uv - float2(0, lr.y), 0, lodEff)).r;
+                float2 lg = float2(lE - lW, lS - lN) * 0.5;
+                lg = sign(lg) * min(abs(lg), 0.08); //cap: residual hard edges emboss boundedly
+                outN = normalize(outN + float3(-lg.x, -lg.y, 0.0) * (LUMA_DETAIL * 8.0));
+            }
+            return float4(outN, g.a); //full-res depth rides through
+        }
+
+    #endif
+#endif
 
 float2 PS_ComputeFlow128(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 {
@@ -614,101 +843,101 @@ float PS_StoreLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 }
 
 #if DEBUG_KERNEL
-float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
-{
-    float3 sceneColor = GetColor(uv);
-    switch(DEBUG_VIEW)
+    float4 PS_Debug(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     {
-        case 0: {
-            static const float  LINE_PX   = 1.5;                //divider half-width, px
-            static const float3 LINE_TINT = float3(0.0, 0.0, 0.0);
-            static const float2 BOX_HALF  = float2(0.16, 0.18); //centre inset half-extents, uv
+        float3 sceneColor = GetColor(uv);
+        switch(DEBUG_VIEW)
+        {
+            case 0: {
+                static const float  LINE_PX   = 1.5;                //divider half-width, px
+                static const float3 LINE_TINT = float3(0.0, 0.0, 0.0);
+                static const float2 BOX_HALF  = float2(0.16, 0.18); //centre inset half-extents, uv
 
-            float2 pixelPos  = uv * BUFFER_SCREEN_SIZE;
-            float2 centrePx  = BUFFER_SCREEN_SIZE * 0.5;
-            float2 boxHalfPx = BOX_HALF * BUFFER_SCREEN_SIZE;
+                float2 pixelPos  = uv * BUFFER_SCREEN_SIZE;
+                float2 centrePx  = BUFFER_SCREEN_SIZE * 0.5;
+                float2 boxHalfPx = BOX_HALF * BUFFER_SCREEN_SIZE;
 
-            //axis-aligned box distance
-            float2 dd     = abs(pixelPos - centrePx) - boxHalfPx;
-            float  boxSDF = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
+                //axis-aligned box distance
+                float2 dd     = abs(pixelPos - centrePx) - boxHalfPx;
+                float  boxSDF = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
 
-            float3 view;
-            if (boxSDF < 0.0)
-            {
-                float2 boxUV = (uv - (0.5 - BOX_HALF)) / (2.0 * BOX_HALF); //full frame mapped into inset
-                view = DrawMotionVectors(boxUV).rgb;                       //centre: motion vectors
-            }
-            else
-            {
-                float2 quadUV = frac(uv * 2.0); //flow/confidence remap to full [0,1] frame
-                if (uv.y < 0.5)
-                    view = (uv.x < 0.5)
-                         ? tex2Dlod(sNormals, float4(uv, 0, 0)).rgb * 0.5 + 0.5     //TL: normals (spatial, raw uv)
-                         : DepthGradient(tex2Dlod(sDepth, float4(uv, 0, 0)).r, uv); //TR: depth (spatial, raw uv)
-                else if (uv.x < 0.5)
-                    view = MotionToColor(tex2Dlod(sFlow, float4(quadUV, 0, 0)).xy); //BL: optical flow field
+                float3 view;
+                if (boxSDF < 0.0)
+                {
+                    float2 boxUV = (uv - (0.5 - BOX_HALF)) / (2.0 * BOX_HALF); //full frame mapped into inset
+                    view = DrawMotionVectors(boxUV).rgb;                       //centre: motion vectors
+                }
                 else
                 {
-                    float  confidence      = tex2Dlod(sConfidence, float4(quadUV, 0, 0)).x; //BR: motion confidence field
-                    float3 confidenceColor = (confidence < 0.5)
-                        ? lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0)
-                        : lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
-                    view = lerp(GetColor(quadUV), confidenceColor, 0.9);
+                    float2 quadUV = frac(uv * 2.0); //flow/confidence remap to full [0,1] frame
+                    if (uv.y < 0.5)
+                        view = (uv.x < 0.5)
+                             ? tex2Dlod(sNormals, float4(uv, 0, 0)).rgb * 0.5 + 0.5     //TL: normals (spatial, raw uv)
+                             : DepthGradient(tex2Dlod(sDepth, float4(uv, 0, 0)).r, uv); //TR: depth (spatial, raw uv)
+                    else if (uv.x < 0.5)
+                        view = MotionToColor(tex2Dlod(sFlow, float4(quadUV, 0, 0)).xy); //BL: optical flow field
+                    else
+                    {
+                        float  confidence      = tex2Dlod(sConfidence, float4(quadUV, 0, 0)).x; //BR: motion confidence field
+                        float3 confidenceColor = (confidence < 0.5)
+                            ? lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0)
+                            : lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
+                        view = lerp(GetColor(quadUV), confidenceColor, 0.9);
+                    }
+
+                    //black dividers
+                    float dCross = min(abs(pixelPos.x - centrePx.x), abs(pixelPos.y - centrePx.y));
+                    view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, dCross));
                 }
 
-                //black dividers
-                float dCross = min(abs(pixelPos.x - centrePx.x), abs(pixelPos.y - centrePx.y));
-                view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, dCross));
+                //centre inset border
+                view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, abs(boxSDF)));
+                //window labels
+                // float2 texcoord  = uv;  //alias: the DrawText macro declares its own internal 'uv'
+                // float  labelMask = 0.0;
+                // float  labelSize = max(BUFFER_HEIGHT * 0.025, 12.0); //label height, px
+                // int lblNormals[21]    = { __R, __e, __c, __o, __n, __s, __t, __r, __u, __c, __t, __e, __d, __Space, __N, __o, __r, __m, __a, __l, __s };
+                // int lblDepth[16]      = { __L, __i, __n, __e, __a, __r, __i, __z, __e, __d, __Space, __D, __e, __p, __t, __h };
+                // int lblFlow[10]       = { __F, __l, __o, __w, __Space, __F, __i, __e, __l, __d };
+                // int lblConfidence[16] = { __C, __o, __n, __f, __i, __d, __e, __n, __c, __e, __Space, __F, __i, __e, __l, __d };
+                // int lblVectors[14]    = { __M, __o, __t, __i, __o, __n, __Space, __V, __e, __c, __t, __o, __r, __s };
+                //
+                // labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 21.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblNormals,    21, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //TL  white
+                // labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblDepth,      16, labelMask); view = lerp(view, float3(0.55, 0.85, 1.00), saturate(labelMask)); //TR  blue
+                // labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 10.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblFlow,       10, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BL  white
+                // labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblConfidence, 16, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BR  white
+                // labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.50 - 14.0 * labelSize * 0.25, BUFFER_HEIGHT * (0.5 - BOX_HALF.y) + 8.0), labelSize, 1.0, texcoord, lblVectors,    14, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //centre  white
+                //
+                // view = lerp(view, float3(1.0, 1.0, 1.0), saturate(labelMask)); //white labels
+                return float4(view, 1.0);
             }
-
-            //centre inset border
-            view = lerp(view, LINE_TINT, 1.0 - smoothstep(LINE_PX - 0.9, LINE_PX + 0.9, abs(boxSDF)));
-            //window labels
-            float2 texcoord  = uv;  //alias: the DrawText macro declares its own internal 'uv'
-            float  labelMask = 0.0;
-            float  labelSize = max(BUFFER_HEIGHT * 0.025, 12.0); //label height, px
-            int lblNormals[21]    = { __R, __e, __c, __o, __n, __s, __t, __r, __u, __c, __t, __e, __d, __Space, __N, __o, __r, __m, __a, __l, __s };
-            int lblDepth[16]      = { __L, __i, __n, __e, __a, __r, __i, __z, __e, __d, __Space, __D, __e, __p, __t, __h };
-            int lblFlow[10]       = { __F, __l, __o, __w, __Space, __F, __i, __e, __l, __d };
-            int lblConfidence[16] = { __C, __o, __n, __f, __i, __d, __e, __n, __c, __e, __Space, __F, __i, __e, __l, __d };
-            int lblVectors[14]    = { __M, __o, __t, __i, __o, __n, __Space, __V, __e, __c, __t, __o, __r, __s };
-
-            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 21.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblNormals,    21, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //TL  white
-            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.03),                     labelSize, 1.0, texcoord, lblDepth,      16, labelMask); view = lerp(view, float3(0.55, 0.85, 1.00), saturate(labelMask)); //TR  blue
-            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.25 - 10.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblFlow,       10, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BL  white
-            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.75 - 16.0 * labelSize * 0.25, BUFFER_HEIGHT * 0.53),                     labelSize, 1.0, texcoord, lblConfidence, 16, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //BR  white
-            labelMask = 0.0; DrawText_String(float2(BUFFER_WIDTH * 0.50 - 14.0 * labelSize * 0.25, BUFFER_HEIGHT * (0.5 - BOX_HALF.y) + 8.0), labelSize, 1.0, texcoord, lblVectors,    14, labelMask); view = lerp(view, float3(1.00, 1.00, 1.00), saturate(labelMask)); //centre  white
-
-            view = lerp(view, float3(1.0, 1.0, 1.0), saturate(labelMask)); //white labels
-            return float4(view, 1.0);
+            case 1: {
+                float4 gbuffer = tex2D(sNormals, uv);
+                float3 normal = gbuffer.rgb;
+                float depth = gbuffer.a;
+                bool isLeftHalf = uv.x < 0.5;
+                float4 dbg;
+                if (isLeftHalf)
+                    dbg = float4(normal * 0.5 + 0.5, 1.0); //left: normals
+                else
+                    dbg = float4(DepthGradient(depth, uv), 1.0); //right: depth gradient
+                return dbg;
+            }
+            case 2:  return float4(MotionToColor(tex2D(sFlow, uv).xy), 1);
+            case 3:  return DrawMotionVectors(uv);
+            case 4:
+            {
+                float confidence = tex2D(sConfidence, uv).x;
+                float3 confidenceColor;
+                if (confidence < 0.5)
+                    confidenceColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0);
+                else
+                    confidenceColor = lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
+                return float4(lerp(sceneColor, confidenceColor, 0.9), 1.0);
+            }
+            default: return float4(sceneColor, 1.0);
         }
-        case 1: {
-            float4 gbuffer = tex2D(sNormals, uv);
-            float3 normal = gbuffer.rgb;
-            float depth = gbuffer.a;
-            bool isLeftHalf = uv.x < 0.5;
-            float4 dbg;
-            if (isLeftHalf)
-                dbg = float4(normal * 0.5 + 0.5, 1.0); //left: normals
-            else
-                dbg = float4(DepthGradient(depth, uv), 1.0); //right: depth gradient
-            return dbg;
-        }
-        case 2:  return float4(MotionToColor(tex2D(sFlow, uv).xy), 1);
-        case 3:  return DrawMotionVectors(uv);
-        case 4:
-        {
-            float confidence = tex2D(sConfidence, uv).x;
-            float3 confidenceColor;
-            if (confidence < 0.5)
-                confidenceColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), confidence * 2.0);
-            else
-                confidenceColor = lerp(float3(1.0, 1.0, 0.0), float3(0.0, 1.0, 0.0), (confidence - 0.5) * 2.0);
-            return float4(lerp(sceneColor, confidenceColor, 0.9), 1.0);
-        }
-        default: return float4(sceneColor, 1.0);
     }
-}
 #endif
 
 /*----------------.
@@ -719,27 +948,38 @@ technique Lumenite_Kernel <
     ui_tooltip = "Pre-effect for LumeniteFX shaders.";
 >
 {
+    //features
+    pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget  = tCurrLuma; }
+
     //normals
     #if IMAGE_SPACE == 0
-        pass { VertexShader = VS; PixelShader = PS_ReconstructNormals; RenderTarget0 = tNormals; RenderTarget1 = tDepth; }
+        #if SMOOTH_NORMALS == 0
+            pass { VertexShader = VS;            PixelShader = PS_ReconstructNormals; RenderTarget0 = tNormals;      RenderTarget1 = tDepth;   }
+        #else
+            pass { VertexShader = VS;            PixelShader = PS_ReconstructNormals; RenderTarget0 = tGuideNormals; RenderTarget1 = tDepth;   }
+            pass { VertexShader = VS;            PixelShader = PS_HRAN_Half;          RenderTarget  = texHRAN_H0;                              }
+            pass { VertexShader = PostProcessVS; PixelShader = PS_HRAN_A;             RenderTarget  = texHRAN_HA;                              }
+            pass { VertexShader = PostProcessVS; PixelShader = PS_HRAN_B;             RenderTarget  = texHRAN_HB;                              }
+            pass { VertexShader = PostProcessVS; PixelShader = PS_HRAN_C;             RenderTarget  = texHRAN_HA;                              }
+            pass { VertexShader = PostProcessVS; PixelShader = PS_HRAN_Up;            RenderTarget  = tNormals;                                }
+        #endif
     #endif
 
     //optical flow
-    pass { VertexShader = PostProcessVS; PixelShader = PS_PackFeatures;    RenderTarget  = tCurrLuma; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow32;   RenderTarget  = tFlow32A; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass32;    RenderTarget  = tFlow32B; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow16;   RenderTarget  = tFlow16A; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass16;    RenderTarget  = tFlow16B; }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ComputeFlow128;  RenderTarget  = tFlow128;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow64;   RenderTarget  = tFlow64A;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass64;    RenderTarget  = tFlow64B;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow32;   RenderTarget  = tFlow32A;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass32;    RenderTarget  = tFlow32B;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow16;   RenderTarget  = tFlow16A;    }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass16;    RenderTarget  = tFlow16B;    }
 
-    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow8;    RenderTarget  = tFlow;  }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8A;    RenderTarget  = tFlow8; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8B;    RenderTarget  = tFlow;  }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_UpscaleFlow8;    RenderTarget  = tFlow;       }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8A;    RenderTarget  = tFlow8;      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_MedianPass8B;    RenderTarget  = tFlow;       }
     pass { VertexShader = PostProcessVS; PixelShader = PS_Confidence;      RenderTarget  = tConfidence; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassA;     RenderTarget  = tFlow8; }
-    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassB;     RenderTarget  = tFlow;  }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassA;     RenderTarget  = tFlow8;      }
+    pass { VertexShader = PostProcessVS; PixelShader = PS_ATrousPassB;     RenderTarget  = tFlow;       }
 
     pass { VertexShader = PostProcessVS; PixelShader = PS_StoreFlow; RenderTarget0 = tPrevFrameFlow; RenderTarget1 = tPrevConfidence; }
     pass { VertexShader = PostProcessVS; PixelShader = PS_StoreLuma; RenderTarget  = tPrevLuma;                                       }

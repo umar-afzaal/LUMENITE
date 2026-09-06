@@ -16,7 +16,7 @@
         Discord    : https://discord.gg/deXJrW2dx6
 
         Filename   : lumenite_SSSR.fx
-        Version    : 2026.05.30
+        Version    : 2026.09.06
         Author     : Afzaal (Kaidō)
         Description: Stochastic Screen Space Reflections.
         License    : AGNYA License (https://github.com/nvb-uy/AGNYA-License)
@@ -43,6 +43,11 @@
 /*---------------.
 | :: UNIFORMS :: |
 '---------------*/
+uniform bool SMOOTH_SHADING <
+    ui_label = "Smooth Shading";
+    ui_tooltip = "Slightly smoothens the raw normals. Turn OFF if SMOOTH_NORMALS is enabled in Kernel.";
+> = 1;
+
 uniform float DEPTH_BOUNDARY <
     ui_type = "slider";
     ui_min = 0.001; ui_max = 0.999; ui_step = 0.001;
@@ -205,9 +210,8 @@ float4 PS_TraceSpecular(VSOUT input) : SV_Target
     if (depth <= 0.0 || depth > DEPTH_BOUNDARY) return float4(0, 0, 0, 1);
 
     //process normals
-    normal = CalculateSmoothNormal(input.uv, gbuffer, 3, Kernel::sNormals);
-    if (BUMP_SCALE > 0.0)
-        normal = CalculateBumpyNormal(input.uv, normal);
+    if (SMOOTH_SHADING) normal = CalculateSmoothNormal(input.uv, gbuffer, 3, Kernel::sNormals);
+    if (BUMP_SCALE > 0.0) normal = CalculateBumpyNormal(input.uv, normal);
 
     float3 StartPos = UVToViewSpace(input.uv, depth, input);
     float3 viewDir = normalize(-StartPos);
